@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRequire } from 'module';
+import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import session from 'express-session';
 import Database from 'better-sqlite3';
@@ -74,14 +75,37 @@ try {
 
 console.log(`SQLite database successfully initialized and ready at: ${DB_PATH}`);
 
+// ─────────────────────────────────────────────
+// Session secret resolution
+// ─────────────────────────────────────────────
+// A hardcoded secret lets anyone who can read the source (e.g. a public repo)
+// forge valid session cookies. Require SESSION_SECRET in production; fall back
+// to an ephemeral random secret in development so sessions reset on restart.
+const SESSION_SECRET = process.env.SESSION_SECRET?.trim();
+
+if (!SESSION_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SESSION_SECRET environment variable is required in production. Generate one with: ' +
+        'node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"'
+    );
+  }
+  console.warn(
+    '[Security] SESSION_SECRET is not set - using an ephemeral development secret. ' +
+      'Sessions will be invalidated on every server restart. Set SESSION_SECRET in .env for stable sessions.'
+  );
+}
+
+const sessionSecret = SESSION_SECRET || randomBytes(48).toString('hex');
+
 // Configure express-session
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || 'skillbridge-ai-secure-session-secret-key-2026',
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false, // set true in production with HTTPS
+      secure: process.env.NODE_ENV === 'production', // require HTTPS in production
       httpOnly: true,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
     },

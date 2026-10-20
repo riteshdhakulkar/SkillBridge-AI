@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# SQLite databases and their WAL/SHM sidecar files
+*.db
+*.db-wal
+*.db-shm
