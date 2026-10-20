@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { SavedAnalysis, GeminiAnalysisResult } from '../types/analysis';
+import { getScoreTier } from './score';
 
 export async function generateAnalysisPDF(
   analysis: SavedAnalysis | GeminiAnalysisResult & { jobTitle?: string; companyName?: string; resumeSource?: string; createdAt?: string },
@@ -75,7 +76,10 @@ export async function generateAnalysisPDF(
   // Match Score Badge on the right
   const score = analysis.matchScore ?? 0;
   const scoreText = `${score}% Match`;
-  doc.setFillColor(score >= 80 ? accentGreen[0] : score >= 65 ? primaryColor[0] : accentAmber[0], score >= 80 ? accentGreen[1] : score >= 65 ? primaryColor[1] : accentAmber[1], score >= 80 ? accentGreen[2] : score >= 65 ? primaryColor[2] : accentAmber[2]);
+  const scoreTier = getScoreTier(score);
+  const scoreBadgeColor =
+    scoreTier === 'strong' ? accentGreen : scoreTier === 'moderate' ? primaryColor : accentAmber;
+  doc.setFillColor(scoreBadgeColor[0], scoreBadgeColor[1], scoreBadgeColor[2]);
   doc.roundedRect(pageWidth - margin - 28, y + 3, 24, 16, 2, 2, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
@@ -154,7 +158,40 @@ export async function generateAnalysisPDF(
     y += 4;
   }
 
-  // ── 3. AI Recommendations ──────────────────────────────────────────────────
+  // ── 3. Extracted Resume Evidence ───────────────────────────────────────────
+  if (analysis.resumeEvidence?.length > 0) {
+    addSectionTitle(`Extracted Resume Evidence (${analysis.resumeEvidence.length})`);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+
+    analysis.resumeEvidence.forEach((ev) => {
+      checkPageBreak(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+      const splitClaim = doc.splitTextToSize(ev.claim || '', contentWidth - 4);
+      doc.text(splitClaim, margin + 2, y);
+      y += splitClaim.length * 4;
+
+      if (ev.alignment) {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(accentGreen[0], accentGreen[1], accentGreen[2]);
+        doc.text(`Alignment: ${ev.alignment}`, margin + 6, y);
+        y += 4;
+      }
+
+      if (ev.evidence) {
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(mutedColor[0], mutedColor[1], mutedColor[2]);
+        const splitEvidence = doc.splitTextToSize(`Evidence: ${ev.evidence}`, contentWidth - 8);
+        doc.text(splitEvidence, margin + 6, y);
+        y += splitEvidence.length * 4;
+      }
+      y += 4;
+    });
+    y += 4;
+  }
+
+  // ── 4. AI Recommendations ──────────────────────────────────────────────────
   if (analysis.recommendations?.length > 0) {
     addSectionTitle('AI Recommendations');
     doc.setFont('helvetica', 'normal');
@@ -171,7 +208,7 @@ export async function generateAnalysisPDF(
     y += 4;
   }
 
-  // ── 4. Learning Roadmap ────────────────────────────────────────────────────
+  // ── 5. Learning Roadmap ────────────────────────────────────────────────────
   if (analysis.learningRoadmap?.length > 0) {
     addSectionTitle('Personalized Learning Roadmap');
     doc.setFont('helvetica', 'normal');
@@ -212,7 +249,7 @@ export async function generateAnalysisPDF(
     y += 4;
   }
 
-  // ── 5. Interview Questions ─────────────────────────────────────────────────
+  // ── 6. Interview Questions ─────────────────────────────────────────────────
   if (analysis.interviewQuestions?.length > 0) {
     addSectionTitle('Targeted Interview Questions');
     doc.setFont('helvetica', 'normal');

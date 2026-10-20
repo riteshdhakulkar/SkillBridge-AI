@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FileText,
   TrendingUp,
@@ -18,10 +18,10 @@ import {
 import { SavedAnalysis } from '../types/analysis';
 import { AnalysisDetailModal } from './AnalysisDetailModal';
 import { QuickActionModal } from './QuickActionModal';
+import { getScoreTheme } from '../utils/score';
 
 interface DashboardPageProps {
   onOpenAnalyze: (role?: string) => void;
-  onNavigateHome: () => void;
   refreshToken?: number; // increments when a new analysis is saved
 }
 
@@ -88,18 +88,6 @@ function deriveMetrics(analyses: SavedAnalysis[]): DerivedMetrics {
 
 // ─── Score badge helper ─────────────────────────────────────────────────────
 
-function scoreBadgeClass(score: number) {
-  if (score >= 85) return 'bg-emerald-50 text-emerald-700 border border-emerald-200/60';
-  if (score >= 70) return 'bg-indigo-50 text-indigo-700 border border-indigo-200/60';
-  return 'bg-amber-50 text-amber-700 border border-amber-200/60';
-}
-
-function scoreLabel(score: number) {
-  if (score >= 85) return 'Strong match';
-  if (score >= 70) return 'Good match';
-  return 'Needs work';
-}
-
 function formatDate(iso: string) {
   const d = new Date(iso);
   return isNaN(d.getTime())
@@ -119,6 +107,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [deletingId, setDeletingId]       = useState<number | null>(null);
   const [selectedAnalysis, setSelectedAnalysis] = useState<SavedAnalysis | null>(null);
   const [quickActionType, setQuickActionType]   = useState<'roadmap' | 'interview' | null>(null);
+  // Tracks which detail request is in flight so a slow response for an
+  // analysis the user has already navigated away from cannot overwrite the
+  // currently open one.
+  const detailRequestId = useRef<number>(0);
 
   // ── Fetch analyses from API ────────────────────────────────────────────────
   const fetchAnalyses = useCallback(async () => {
@@ -158,6 +150,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       alert(`Could not delete analysis: ${err.message}`);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  // ── Open one analysis ──────────────────────────────────────────────────────
+  const handleOpenDetail = async (id: number) => {
+    // Show what the list already gave us straight away so the modal feels
+    // instant, then replace it with the authoritative record fetched from
+    // GET /api/analyses/:id.
+    setSelectedAnalysis(analyses.find((a) => a.id === id) ?? null);
+
+    const requestId = ++detailRequestId.current;
+    try {
+      const res = await fetch(`/api/analyses/${id}`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Failed to load analysis');
+      // Ignore a response for an analysis the user has already moved away from.
+      if (detailRequestId.current === requestId) {
+        setSelectedAnalysis(json.data as SavedAnalysis);
+      }
+    } catch (err: any) {
+      console.error('Failed to load full analysis:', err);
+      // Keep the cached copy on screen - the list payload is already complete.
     }
   };
 
@@ -424,10 +439,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         </td>
                         <td className="px-6 py-4">
                           <div className="inline-flex items-center gap-2">
-                            <span className={`inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs font-bold tabular-nums ${scoreBadgeClass(item.matchScore)}`}>
+                            <span className={`inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs font-bold tabular-nums ${getScoreTheme(item.matchScore).badgeClass}`}>
                               {item.matchScore}%
                             </span>
-                            <span className="text-[11px] text-slate-500">{scoreLabel(item.matchScore)}</span>
+                            <span className="text-[11px] text-slate-500">{getScoreTheme(item.matchScore).shortLabel}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-slate-500 text-xs whitespace-nowrap">
@@ -440,7 +455,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <div className="inline-flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => setSelectedAnalysis(item)}
+                              onClick={() => handleOpenDetail(item.id)}
                               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300 transition-all cursor-pointer"
                             >
                               <span>View</span>
@@ -477,7 +492,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <p className="text-xs text-slate-500 mt-0.5">{item.companyName}</p>
                         )}
                       </div>
-                      <span className={`inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums ${scoreBadgeClass(item.matchScore)}`}>
+                      <span className={`inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-bold tabular-nums ${getScoreTheme(item.matchScore).badgeClass}`}>
                         {item.matchScore}%
                       </span>
                     </div>
@@ -488,7 +503,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedAnalysis(item)}
+                        onClick={() => handleOpenDetail(item.id)}
                         className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                       >
                         <span>View Details</span>

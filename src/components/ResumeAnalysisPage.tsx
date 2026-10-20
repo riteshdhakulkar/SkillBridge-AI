@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FileText,
   UploadCloud,
@@ -24,17 +24,16 @@ import {
 } from 'lucide-react';
 import { GeminiAnalysisResult, AnalysisResponseMeta } from '../types/analysis';
 import { generateAnalysisPDF } from '../utils/pdfExport';
+import { getScoreTheme } from '../utils/score';
 
 interface ResumeAnalysisPageProps {
   onNavigateDashboard: () => void;
-  onNavigateHome: () => void;
   initialRole?: string;
   onAnalysisSaved?: (savedId: number) => void;
 }
 
 export const ResumeAnalysisPage: React.FC<ResumeAnalysisPageProps> = ({
   onNavigateDashboard,
-  onNavigateHome,
   initialRole,
   onAnalysisSaved,
 }) => {
@@ -66,6 +65,18 @@ export const ResumeAnalysisPage: React.FC<ResumeAnalysisPageProps> = ({
 
   // Active result tab
   const [activeResultTab, setActiveResultTab] = useState<'overview' | 'skills' | 'roadmap' | 'interview'>('overview');
+
+  // Pre-fill the job description when the user arrives via the dashboard's
+  // "retest this role" action. Only the role title is known at that point, so
+  // seed a template the user can paste the rest of the posting into. Without
+  // this the role context was accepted as a prop and then silently discarded.
+  useEffect(() => {
+    if (!initialRole) return;
+    setJobError(null);
+    setJobDescription((prev) =>
+      prev.trim().length > 0 ? prev : `Role: ${initialRole}\n\nJob Description:\n`
+    );
+  }, [initialRole]);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
@@ -309,32 +320,6 @@ Computer Science Peer Tutor (Sep 2024 - Present)
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Score color helper
-  const getScoreTheme = (score: number) => {
-    if (score >= 80) {
-      return {
-        text: 'text-emerald-700',
-        bg: 'bg-emerald-50',
-        border: 'border-emerald-200',
-        badge: 'Strong Qualification Match',
-      };
-    }
-    if (score >= 60) {
-      return {
-        text: 'text-indigo-700',
-        bg: 'bg-indigo-50',
-        border: 'border-indigo-200',
-        badge: 'Moderate Match · High Potential',
-      };
-    }
-    return {
-      text: 'text-amber-700',
-      bg: 'bg-amber-50',
-      border: 'border-amber-200',
-      badge: 'Developing Alignment · Skill Gaps Found',
-    };
-  };
-
   return (
     <div className="bg-white min-h-screen pb-24">
       {/* 1. Page Header */}
@@ -420,7 +405,7 @@ Computer Science Peer Tutor (Sep 2024 - Present)
                         </span>
                       </div>
                       <h2 className="text-2xl font-black text-slate-900">
-                        {theme.badge}
+                        {theme.label}
                       </h2>
                       <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
                         Evaluated against {analysisResult.matchedSkills.length + analysisResult.missingSkills.length} core job competencies with Gemini 3.8 Flash.

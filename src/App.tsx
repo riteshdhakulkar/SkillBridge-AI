@@ -160,7 +160,6 @@ export default function App() {
           currentUser ? (
             <DashboardPage
               onOpenAnalyze={(role) => handleNavigateAnalyze(role)}
-              onNavigateHome={handleNavigateHome}
               refreshToken={dashboardRefreshToken}
             />
           ) : (
@@ -204,7 +203,6 @@ export default function App() {
           currentUser ? (
             <ResumeAnalysisPage
               onNavigateDashboard={handleNavigateDashboard}
-              onNavigateHome={handleNavigateHome}
               initialRole={targetRoleContext}
               onAnalysisSaved={handleAnalysisSaved}
             />

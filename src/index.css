@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Provides the animate-in / fade-in / zoom-in-* / slide-in-from-* utilities
+   used across the UI. These are not part of Tailwind v4 core. */
+@import "tw-animate-css";
 
 @layer base {
   html {

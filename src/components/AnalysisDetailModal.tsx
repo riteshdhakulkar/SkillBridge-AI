@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SavedAnalysis } from '../types/analysis';
 import { generateAnalysisPDF } from '../utils/pdfExport';
+import { getScoreTheme } from '../utils/score';
 
 interface AnalysisDetailModalProps {
   analysis: SavedAnalysis | null;
@@ -84,19 +85,9 @@ export const AnalysisDetailModal: React.FC<AnalysisDetailModalProps> = ({
     }
   };
 
-  const scoreColor =
-    analysis.matchScore >= 80
-      ? 'text-emerald-700'
-      : analysis.matchScore >= 65
-      ? 'text-indigo-700'
-      : 'text-amber-700';
-
-  const scoreBg =
-    analysis.matchScore >= 80
-      ? 'bg-emerald-50 border-emerald-200'
-      : analysis.matchScore >= 65
-      ? 'bg-indigo-50 border-indigo-100'
-      : 'bg-amber-50 border-amber-200';
+  const scoreTheme = getScoreTheme(analysis.matchScore);
+  const scoreColor = scoreTheme.text;
+  const scoreBg = `${scoreTheme.bg} ${scoreTheme.border}`;
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview',  label: 'Overview',  icon: <FileText   className="h-3.5 w-3.5" /> },
@@ -257,6 +248,41 @@ export const AnalysisDetailModal: React.FC<AnalysisDetailModalProps> = ({
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 italic">No missing skills recorded.</p>
+                )}
+              </div>
+
+              {/* Resume Evidence */}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-2.5">
+                  <FileText className="h-4 w-4 text-indigo-600" />
+                  Resume Evidence ({analysis.resumeEvidence?.length ?? 0})
+                </h4>
+                {analysis.resumeEvidence?.length > 0 ? (
+                  <div className="space-y-2">
+                    {analysis.resumeEvidence.map((ev, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs space-y-1"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-slate-900">{ev.claim}</span>
+                          {ev.alignment && (
+                            <span className="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                              {ev.alignment}
+                            </span>
+                          )}
+                        </div>
+                        {ev.evidence && (
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            <span className="font-semibold text-slate-600">Evidence: </span>
+                            {ev.evidence}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">No resume evidence recorded.</p>
                 )}
               </div>
 
