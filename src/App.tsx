@@ -9,6 +9,7 @@ import { ResumeAnalysisPage } from './components/ResumeAnalysisPage';
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'dashboard' | 'analyze'>('home');
   const [targetRoleContext, setTargetRoleContext] = useState<string | undefined>(undefined);
+  const [dashboardRefreshToken, setDashboardRefreshToken] = useState<number>(0);
 
   const handleNavigateHome = () => {
     setCurrentPage('home');
@@ -24,6 +25,10 @@ export default function App() {
     setTargetRoleContext(role);
     setCurrentPage('analyze');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAnalysisSaved = (_savedId?: number) => {
+    setDashboardRefreshToken((prev) => prev + 1);
   };
 
   const handleExploreFeatures = () => {
@@ -69,6 +74,7 @@ export default function App() {
           <DashboardPage
             onOpenAnalyze={(role) => handleNavigateAnalyze(role)}
             onNavigateHome={handleNavigateHome}
+            refreshToken={dashboardRefreshToken}
           />
         )}
 
@@ -78,6 +84,7 @@ export default function App() {
             onNavigateDashboard={handleNavigateDashboard}
             onNavigateHome={handleNavigateHome}
             initialRole={targetRoleContext}
+            onAnalysisSaved={handleAnalysisSaved}
           />
         )}
       </main>

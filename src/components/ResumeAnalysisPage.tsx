@@ -27,11 +27,14 @@ interface ResumeAnalysisPageProps {
   onNavigateDashboard: () => void;
   onNavigateHome: () => void;
   initialRole?: string;
+  onAnalysisSaved?: (savedId: number) => void;
 }
 
 export const ResumeAnalysisPage: React.FC<ResumeAnalysisPageProps> = ({
   onNavigateDashboard,
   onNavigateHome,
+  initialRole,
+  onAnalysisSaved,
 }) => {
   // Input mode: 'upload' (PDF) or 'paste' (text)
   const [resumeMode, setResumeMode] = useState<'upload' | 'paste'>('upload');
@@ -276,6 +279,10 @@ Computer Science Peer Tutor (Sep 2024 - Present)
       setAnalysisResult(data.data);
       setAnalysisMeta(data.meta);
       setIsAnalyzing(false);
+
+      if (onAnalysisSaved && data.savedId) {
+        onAnalysisSaved(data.savedId);
+      }
 
       // Scroll to top of results smoothly
       window.scrollTo({ top: 150, behavior: 'smooth' });

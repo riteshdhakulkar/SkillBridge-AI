@@ -1,28 +1,38 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Compass,
-  Briefcase,
-  CheckCircle2,
-  Clock,
   Sparkles,
   ArrowRight,
   BookOpen,
   MessageSquare,
+  Building2,
+  Calendar,
+  Layers,
+  HelpCircle,
 } from 'lucide-react';
+import { SavedAnalysis } from '../types/analysis';
 import { SAMPLE_ROADMAP_MILESTONES, SAMPLE_INTERVIEW_QUESTIONS } from '../data/sampleData';
 
 interface QuickActionModalProps {
   type: 'roadmap' | 'interview' | null;
   onClose: () => void;
   onOpenAnalyze: () => void;
+  latestAnalysis?: SavedAnalysis | null;
 }
 
 export const QuickActionModal: React.FC<QuickActionModalProps> = ({
   type,
   onClose,
   onOpenAnalyze,
+  latestAnalysis,
 }) => {
+  const [showDemoSample, setShowDemoSample] = useState(false);
+
+  useEffect(() => {
+    setShowDemoSample(false);
+  }, [type, latestAnalysis]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -40,6 +50,9 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
   if (!type) return null;
 
   const isRoadmap = type === 'roadmap';
+  const hasRealRoadmap = Boolean(latestAnalysis && latestAnalysis.learningRoadmap?.length > 0);
+  const hasRealInterview = Boolean(latestAnalysis && latestAnalysis.interviewQuestions?.length > 0);
+  const hasRealData = isRoadmap ? hasRealRoadmap : hasRealInterview;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
@@ -81,87 +94,196 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
 
         {/* Content */}
         <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-          {isRoadmap ? (
+          {hasRealData && !showDemoSample ? (
+            /* Real data mode from saved analyses */
             <div className="space-y-4">
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold text-indigo-700">
-                  <Sparkles className="h-4 w-4" />
-                  <span>Targeted Curriculum</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-600">
-                  These 3 prioritized milestones directly address the skill gaps identified in your recent software engineering resume scans.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {SAMPLE_ROADMAP_MILESTONES.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-2"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-indigo-600 uppercase tracking-wider text-[11px]">
-                        {item.category}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                          item.status === 'Completed'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : item.status === 'In Progress'
-                            ? 'bg-indigo-50 text-indigo-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {item.status}
-                      </span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-slate-900">{item.title}</h4>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {item.description}
-                    </p>
-
-                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pt-1">
-                      <Clock className="h-3.5 w-3.5 text-slate-400" />
-                      <span>Estimated time: {item.timeEstimate}</span>
-                    </div>
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-700">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Based on your saved analysis:</span>
                   </div>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setShowDemoSample(true)}
+                    className="text-[11px] text-indigo-600 hover:underline cursor-pointer"
+                  >
+                    View Sample Preview
+                  </button>
+                </div>
+                <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-slate-700">
+                  <span className="font-semibold">{latestAnalysis?.jobTitle}</span>
+                  {latestAnalysis?.companyName && (
+                    <>
+                      <span className="text-slate-300">·</span>
+                      <span className="flex items-center gap-1 text-slate-500">
+                        <Building2 className="h-3 w-3" />
+                        {latestAnalysis.companyName}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
+
+              {isRoadmap ? (
+                <ol className="space-y-4 pt-1">
+                  {latestAnalysis?.learningRoadmap?.map((step, i) => (
+                    <li key={i} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white text-xs font-bold">
+                          {i + 1}
+                        </div>
+                        {i < (latestAnalysis.learningRoadmap?.length ?? 0) - 1 && (
+                          <div className="flex-1 w-px bg-indigo-200 my-1" />
+                        )}
+                      </div>
+                      <div className="pb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-slate-900">{step.milestone}</span>
+                          <span className="inline-flex items-center rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                            {step.timeframe}
+                          </span>
+                        </div>
+                        {step.actionItems?.length > 0 && (
+                          <ul className="mt-1.5 space-y-1">
+                            {step.actionItems.map((item, j) => (
+                              <li key={j} className="flex items-start gap-1.5 text-xs text-slate-600">
+                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {step.resourceSuggestion && (
+                          <p className="mt-1.5 text-[11px] text-indigo-600 font-medium">
+                            📚 {step.resourceSuggestion}
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <ol className="space-y-4 pt-1">
+                  {latestAnalysis?.interviewQuestions?.map((q, i) => (
+                    <li
+                      key={i}
+                      className="rounded-xl border border-slate-200 bg-white p-4 space-y-1.5 shadow-2xs"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 h-5 w-5 shrink-0 inline-flex items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">
+                          {i + 1}
+                        </span>
+                        <p className="text-sm font-semibold text-slate-900">{q.question}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap pl-7">
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                          {q.topic}
+                        </span>
+                      </div>
+                      {q.expectedFocus && (
+                        <p className="pl-7 text-[11px] text-slate-500 leading-relaxed">{q.expectedFocus}</p>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
           ) : (
+            /* Empty state or explicit demo view */
             <div className="space-y-4">
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold text-indigo-700">
-                  <Sparkles className="h-4 w-4" />
-                  <span>AI-Grounded Interview Prep</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-600">
-                  Practice questions tailored specifically to technical concepts found in your resume and target job requirements.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {SAMPLE_INTERVIEW_QUESTIONS.map((q, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-2"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-indigo-600 uppercase tracking-wider text-[11px]">
-                        {q.category}
-                      </span>
-                      <span className="text-[11px] text-slate-400">Question {idx + 1} of 3</span>
-                    </div>
-
-                    <p className="text-sm font-semibold text-slate-900">"{q.question}"</p>
-
-                    <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 flex items-center gap-1.5">
-                      <BookOpen className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                      <span>{q.relevance}</span>
-                    </div>
+              {!hasRealData && (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-5 text-center">
+                  <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 mb-2">
+                    <Sparkles className="h-5 w-5" />
                   </div>
-                ))}
+                  <h3 className="text-sm font-bold text-slate-800">
+                    {isRoadmap ? 'No learning roadmaps saved yet' : 'No interview questions saved yet'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Evaluate your resume against a target position to generate tailored learning milestones and practice interview questions.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenAnalyze();
+                    }}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                  >
+                    <span>Analyze Resume Now</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Sample preview for illustration */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {hasRealData ? 'Sample Demo Preview' : 'Curriculum Example (Preview)'}
+                  </span>
+                  {hasRealData && (
+                    <button
+                      type="button"
+                      onClick={() => setShowDemoSample(false)}
+                      className="text-xs text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      Return to your saved evaluation
+                    </button>
+                  )}
+                </div>
+
+                {isRoadmap ? (
+                  <div className="space-y-3">
+                    {SAMPLE_ROADMAP_MILESTONES.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-2 opacity-80"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-indigo-600 uppercase tracking-wider text-[11px]">
+                            {item.category}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                              item.status === 'Completed'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : item.status === 'In Progress'
+                                ? 'bg-indigo-50 text-indigo-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900">{item.title}</h4>
+                        <p className="text-xs text-slate-600 leading-relaxed">{item.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {SAMPLE_INTERVIEW_QUESTIONS.map((q, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-2 opacity-80"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-indigo-600 uppercase tracking-wider text-[11px]">
+                            {q.category}
+                          </span>
+                          <span className="text-[11px] text-slate-400">Sample Prompt</span>
+                        </div>
+                        <p className="text-sm font-semibold text-slate-900">"{q.question}"</p>
+                        <div className="rounded-lg bg-slate-50 p-2 text-[11px] text-slate-600 flex items-center gap-1.5">
+                          <BookOpen className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                          <span>{q.relevance}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

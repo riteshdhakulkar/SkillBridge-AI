@@ -4,7 +4,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRequire } from 'module';
-import Database from 'better-sqlite3';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -18,6 +17,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = 3000;
 
+import Database from 'better-sqlite3';
+
 // ─────────────────────────────────────────────
 // SQLite database initialisation
 // ─────────────────────────────────────────────
@@ -27,6 +28,7 @@ const db = new Database(DB_PATH);
 // Enable WAL mode for better concurrent-read performance
 db.pragma('journal_mode = WAL');
 
+// Create the analyses table if it does not already exist
 db.exec(`
   CREATE TABLE IF NOT EXISTS analyses (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,10 +46,27 @@ db.exec(`
   )
 `);
 
-console.log(`SQLite database ready at: ${DB_PATH}`);
+console.log(`SQLite database successfully initialized and ready at: ${DB_PATH}`);
 
-// Allow payloads up to 15MB for PDF base64 handling
-app.use(express.json({ limit: '15mb' }));
+// Allow payloads up to 50MB for PDF/DOCX base64 handling
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Ensure Express body-parser and JSON syntax errors return clean JSON, never HTML
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err) {
+    console.error('Body parser error:', err.message);
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({
+        error: 'The uploaded file or request payload is too large. Please upload a smaller document or paste your resume text.',
+      });
+    }
+    return res.status(err.status || 400).json({
+      error: `Invalid request payload: ${err.message || 'Malformed body'}`,
+    });
+  }
+  next();
+});
 
 // Helper function to safely extract text from PDF or Word (.docx/.doc) document buffer
 async function extractTextFromDocument(buffer: Buffer, fileName: string): Promise<string> {
@@ -133,17 +152,21 @@ app.post('/api/analyze-resume', async (req, res) => {
       });
     }
 
-    // Check Gemini API key configuration (supports 'resumeAnalyzer' or 'GEMINI_API_KEY')
-    const apiKey =
-      process.env.resumeAnalyzer ||
-      process.env.GEMINI_API_KEY ||
-      process.env.RESUME_ANALYZER ||
-      process.env.RESUMEANALYZER;
+    // Check Gemini API key configuration (supports 'GEMINI_API_KEY', 'resumeAnalyzer', or other aliases)
+    // Filter out dummy placeholder values like 'MY_GEMINI_API_KEY'
+    const candidateKeys = [
+      process.env.GEMINI_API_KEY,
+      process.env.resumeAnalyzer,
+      process.env.RESUME_ANALYZER,
+      process.env.RESUMEANALYZER,
+    ].filter((k): k is string => typeof k === 'string' && k.trim().length > 0 && k !== 'MY_GEMINI_API_KEY');
 
-    if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey.trim() === '') {
+    const apiKey = candidateKeys[0];
+
+    if (!apiKey) {
       return res.status(503).json({
         error:
-          'Gemini API key is not configured on the server. Please ensure your secret (resumeAnalyzer or GEMINI_API_KEY) is added in the AI Studio Settings > Secrets panel.',
+          'Gemini API key is not configured on the server. Please ensure your secret (GEMINI_API_KEY or resumeAnalyzer) is added in the AI Studio Settings > Secrets panel.',
       });
     }
 
@@ -178,7 +201,7 @@ ${finalResumeText}
 ${jobDescription.trim()}`;
 
     // Call Gemini with automatic retry for temporary high demand (503) spikes and model fallbacks
-    const candidateModels = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+    const candidateModels = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.8-flash'];
     let lastError: any = null;
     let responseText: string | undefined = undefined;
 
@@ -190,7 +213,8 @@ ${jobDescription.trim()}`;
             contents: userPrompt,
             config: {
               systemInstruction,
-              temperature: 0.3,
+              temperature: 0.2,
+              thinkingConfig: { thinkingBudget: 0 },
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -437,8 +461,8 @@ app.get('/api/analyses', (_req, res) => {
 /** GET /api/analyses/:id — fetch one analysis in full */
 app.get('/api/analyses/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
-    return res.status(400).json({ error: 'Invalid analysis ID.' });
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid analysis ID. Must be a positive integer.' });
   }
   try {
     const row = db.prepare('SELECT * FROM analyses WHERE id = ?').get(id);
@@ -455,19 +479,24 @@ app.get('/api/analyses/:id', (req, res) => {
 /** DELETE /api/analyses/:id — delete one analysis */
 app.delete('/api/analyses/:id', (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) {
-    return res.status(400).json({ error: 'Invalid analysis ID.' });
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'Invalid analysis ID. Must be a positive integer.' });
   }
   try {
     const info = db.prepare('DELETE FROM analyses WHERE id = ?').run(id);
     if (info.changes === 0) {
       return res.status(404).json({ error: 'Analysis not found.' });
     }
-    return res.json({ success: true });
+    return res.json({ success: true, message: `Analysis ${id} successfully deleted.` });
   } catch (err: any) {
     console.error('DELETE /api/analyses/:id error:', err);
     return res.status(500).json({ error: 'Failed to delete analysis.' });
   }
+});
+
+// Guard: Ensure any unhandled /api route returns JSON, never HTML
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
 });
 
 // Mount Vite middleware for dev or serve dist in production

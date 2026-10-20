@@ -30,24 +30,59 @@ interface DashboardPageProps {
 interface DerivedMetrics {
   totalAnalyses: number;
   avgMatchScore: string;
-  totalMissingSkills: number;
-  totalRoadmapItems: number;
+  totalSkillsIdentified: number;
+  matchedCount: number;
+  gapCount: number;
+  learningHours: number;
+  totalMilestones: number;
 }
 
 function deriveMetrics(analyses: SavedAnalysis[]): DerivedMetrics {
   if (analyses.length === 0) {
-    return { totalAnalyses: 0, avgMatchScore: '—', totalMissingSkills: 0, totalRoadmapItems: 0 };
+    return {
+      totalAnalyses: 0,
+      avgMatchScore: '—',
+      totalSkillsIdentified: 0,
+      matchedCount: 0,
+      gapCount: 0,
+      learningHours: 0,
+      totalMilestones: 0,
+    };
   }
   const avg = Math.round(
-    analyses.reduce((sum, a) => sum + a.matchScore, 0) / analyses.length
+    analyses.reduce((sum, a) => sum + (a.matchScore || 0), 0) / analyses.length
   );
-  const totalMissing = analyses.reduce((sum, a) => sum + (a.missingSkills?.length ?? 0), 0);
-  const totalRoadmap = analyses.reduce((sum, a) => sum + (a.learningRoadmap?.length ?? 0), 0);
+
+  const matchedSet = new Set<string>();
+  const gapSet = new Set<string>();
+  let totalHours = 0;
+  let totalMilestones = 0;
+
+  analyses.forEach((a) => {
+    (a.matchedSkills || []).forEach((m) => {
+      if (m.skill) matchedSet.add(m.skill.trim().toLowerCase());
+    });
+    (a.missingSkills || []).forEach((m) => {
+      if (m.skill) gapSet.add(m.skill.trim().toLowerCase());
+    });
+    if (Array.isArray(a.learningRoadmap)) {
+      totalMilestones += a.learningRoadmap.length;
+      a.learningRoadmap.forEach((item) => {
+        const actionCount = item.actionItems?.length || 1;
+        // Estimate ~4 hours of targeted study/practice per roadmap action item
+        totalHours += actionCount * 4;
+      });
+    }
+  });
+
   return {
     totalAnalyses: analyses.length,
     avgMatchScore: `${avg}%`,
-    totalMissingSkills: totalMissing,
-    totalRoadmapItems: totalRoadmap,
+    totalSkillsIdentified: matchedSet.size + gapSet.size,
+    matchedCount: matchedSet.size,
+    gapCount: gapSet.size,
+    learningHours: totalHours,
+    totalMilestones,
   };
 }
 
@@ -133,28 +168,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     {
       title: 'Total Analyses',
       value: loading ? '…' : String(metrics.totalAnalyses),
-      sub: 'Saved resume evaluations',
+      sub: metrics.totalAnalyses === 1 ? '1 evaluation saved' : `${metrics.totalAnalyses} evaluations saved`,
       icon: <FileText className="h-5 w-5 text-indigo-600" />,
       positive: true,
     },
     {
       title: 'Average Match Score',
       value: loading ? '…' : metrics.avgMatchScore,
-      sub: 'Across all evaluations',
+      sub: metrics.totalAnalyses > 0 ? 'Across all evaluated roles' : 'No evaluations yet',
       icon: <TrendingUp className="h-5 w-5 text-emerald-600" />,
       positive: true,
     },
     {
-      title: 'Missing Skills Identified',
-      value: loading ? '…' : String(metrics.totalMissingSkills),
-      sub: 'Total across all analyses',
+      title: 'Skills Identified',
+      value: loading ? '…' : String(metrics.totalSkillsIdentified),
+      sub: metrics.totalAnalyses > 0 ? `${metrics.matchedCount} demonstrated · ${metrics.gapCount} gaps` : 'Awaiting evaluations',
       icon: <AlertCircle className="h-5 w-5 text-amber-600" />,
-      positive: false,
+      positive: metrics.gapCount === 0,
     },
     {
-      title: 'Roadmap Milestones',
-      value: loading ? '…' : String(metrics.totalRoadmapItems),
-      sub: 'Total learning steps generated',
+      title: 'Estimated Learning Hours',
+      value: loading ? '…' : `${metrics.learningHours} hrs`,
+      sub: metrics.totalMilestones > 0 ? `${metrics.totalMilestones} roadmap milestones` : '0 roadmap milestones',
       icon: <CheckCircle2 className="h-5 w-5 text-indigo-600" />,
       positive: true,
     },
@@ -512,6 +547,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         type={quickActionType}
         onClose={() => setQuickActionType(null)}
         onOpenAnalyze={() => onOpenAnalyze()}
+        latestAnalysis={analyses[0] ?? null}
       />
     </div>
   );
