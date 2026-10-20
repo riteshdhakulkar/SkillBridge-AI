@@ -20,8 +20,10 @@ import {
   Layers,
   HelpCircle,
   ExternalLink,
+  Download,
 } from 'lucide-react';
 import { GeminiAnalysisResult, AnalysisResponseMeta } from '../types/analysis';
+import { generateAnalysisPDF } from '../utils/pdfExport';
 
 interface ResumeAnalysisPageProps {
   onNavigateDashboard: () => void;
@@ -708,14 +710,46 @@ Computer Science Peer Tutor (Sep 2024 - Present)
                 <span>Analyze Another Resume</span>
               </button>
 
-              <button
-                type="button"
-                onClick={onNavigateDashboard}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-              >
-                <span>View Dashboard Progress</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!analysisResult) return;
+                    try {
+                      const jdLines = jobDescription.trim().split('\n').map((l: string) => l.trim()).filter(Boolean);
+                      const titleLine = jdLines.find((l: string) => /^role[:\s]/i.test(l)) || jdLines[0] || 'Target Role';
+                      const companyLine = jdLines.find((l: string) => /^company[:\s]/i.test(l)) || '';
+                      const jobTitle = titleLine.replace(/^role[:\s]*/i, '').trim();
+                      const companyName = companyLine.replace(/^company[:\s]*/i, '').trim();
+                      const resumeSource = uploadedFile?.name || 'Pasted Text';
+
+                      await generateAnalysisPDF({
+                        ...analysisResult,
+                        jobTitle,
+                        companyName,
+                        resumeSource,
+                        createdAt: new Date().toISOString(),
+                      }, false);
+                    } catch (err) {
+                      console.error('PDF export error:', err);
+                      alert('Failed to generate PDF report.');
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors cursor-pointer"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Download PDF Report</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onNavigateDashboard}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                >
+                  <span>View Dashboard Progress</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         ) : (

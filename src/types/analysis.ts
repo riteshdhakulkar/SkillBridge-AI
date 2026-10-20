@@ -60,3 +60,9 @@ export interface SavedAnalysis {
   learningRoadmap: LearningRoadmapItem[];
   interviewQuestions: InterviewQuestionItem[];
 }
+export interface User {
+  id: number;
+  fullName: string;
+  email: string;
+  createdAt: string;
+}

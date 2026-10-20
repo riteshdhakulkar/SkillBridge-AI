@@ -12,8 +12,10 @@ import {
   MessageSquare,
   Loader2,
   Trash2,
+  Download,
 } from 'lucide-react';
 import { SavedAnalysis } from '../types/analysis';
+import { generateAnalysisPDF } from '../utils/pdfExport';
 
 interface AnalysisDetailModalProps {
   analysis: SavedAnalysis | null;
@@ -39,10 +41,12 @@ export const AnalysisDetailModal: React.FC<AnalysisDetailModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [deleting, setDeleting] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     setActiveTab('overview');
     setDeleting(false);
+    setDownloadingPdf(false);
   }, [analysis]);
 
   useEffect(() => {
@@ -66,6 +70,18 @@ export const AnalysisDetailModal: React.FC<AnalysisDetailModalProps> = ({
     setDeleting(true);
     onClose();
     onDelete(analysis.id);
+  };
+
+  const handleDownloadPDF = async () => {
+    setDownloadingPdf(true);
+    try {
+      await generateAnalysisPDF(analysis, true);
+    } catch (err) {
+      console.error('PDF export error:', err);
+      alert('Failed to generate PDF report. Please try again.');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   const scoreColor =
@@ -111,14 +127,26 @@ export const AnalysisDetailModal: React.FC<AnalysisDetailModalProps> = ({
               <p className="text-xs text-slate-500 truncate max-w-[320px]">{analysis.resumeSource}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={downloadingPdf}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors cursor-pointer disabled:opacity-50"
+              title="Download professional PDF report"
+            >
+              {downloadingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              <span>Download PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Score + Meta banner */}
@@ -357,17 +385,28 @@ export const AnalysisDetailModal: React.FC<AnalysisDetailModalProps> = ({
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onRetest(analysis.jobTitle || '');
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-          >
-            <span>Re-analyze for this Role</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={downloadingPdf}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {downloadingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              <span>Download PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onRetest(analysis.jobTitle || '');
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+            >
+              <span>Re-analyze for this Role</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

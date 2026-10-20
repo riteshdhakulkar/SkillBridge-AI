@@ -4,6 +4,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createRequire } from 'module';
+import bcrypt from 'bcryptjs';
+import session from 'express-session';
+import Database from 'better-sqlite3';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -17,10 +20,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = 3000;
 
-import Database from 'better-sqlite3';
-
 // ─────────────────────────────────────────────
-// SQLite database initialisation
+// SQLite database initialisation & Authentication
 // ─────────────────────────────────────────────
 const DB_PATH = path.resolve(__dirname, 'analyses.db');
 const db = new Database(DB_PATH);
@@ -28,10 +29,22 @@ const db = new Database(DB_PATH);
 // Enable WAL mode for better concurrent-read performance
 db.pragma('journal_mode = WAL');
 
-// Create the analyses table if it does not already exist
+// Create users table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    fullName  TEXT    NOT NULL,
+    email     TEXT    NOT NULL UNIQUE,
+    password  TEXT    NOT NULL,
+    createdAt TEXT    NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
+// Create analyses table if not exists
 db.exec(`
   CREATE TABLE IF NOT EXISTS analyses (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId             INTEGER,
     jobTitle           TEXT    NOT NULL DEFAULT '',
     companyName        TEXT    NOT NULL DEFAULT '',
     matchScore         INTEGER NOT NULL,
@@ -42,11 +55,38 @@ db.exec(`
     recommendations    TEXT    NOT NULL DEFAULT '[]',
     learningRoadmap    TEXT    NOT NULL DEFAULT '[]',
     interviewQuestions TEXT    NOT NULL DEFAULT '[]',
-    createdAt          TEXT    NOT NULL DEFAULT (datetime('now'))
+    createdAt          TEXT    NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
   )
 `);
 
+// Safe migration: check if userId column exists in analyses table; if not, add it
+try {
+  const tableInfo = db.prepare("PRAGMA table_info(analyses)").all() as Array<{ name: string }>;
+  const hasUserId = tableInfo.some((col) => col.name === 'userId');
+  if (!hasUserId) {
+    db.exec('ALTER TABLE analyses ADD COLUMN userId INTEGER REFERENCES users(id) ON DELETE CASCADE');
+    console.log('Successfully migrated analyses table to include userId column.');
+  }
+} catch (migErr) {
+  console.error('Migration check error:', migErr);
+}
+
 console.log(`SQLite database successfully initialized and ready at: ${DB_PATH}`);
+
+// Configure express-session
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'skillbridge-ai-secure-session-secret-key-2026',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false, // set true in production with HTTPS
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+    },
+  })
+);
 
 // Allow payloads up to 50MB for PDF/DOCX base64 handling
 app.use(express.json({ limit: '50mb' }));
@@ -95,9 +135,144 @@ async function extractTextFromDocument(buffer: Buffer, fileName: string): Promis
   }
 }
 
-// POST endpoint for resume analysis using real Gemini API
+// ─────────────────────────────────────────────
+// Authentication API Routes
+// ─────────────────────────────────────────────
+
+// Helper to sanitize user object (exclude password)
+function sanitizeUser(user: any) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    createdAt: user.createdAt,
+  };
+}
+
+/** POST /api/auth/signup */
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { fullName, email, password } = req.body;
+
+    if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 2) {
+      return res.status(400).json({ error: 'Please provide a valid full name (at least 2 characters).' });
+    }
+    if (!email || typeof email !== 'string' || !email.includes('@') || !email.includes('.')) {
+      return res.status(400).json({ error: 'Please provide a valid email address.' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Check if user already exists
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
+    if (existing) {
+      return res.status(409).json({ error: 'An account with this email address already exists. Please log in.' });
+    }
+
+    // Hash password securely
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const insert = db.prepare('INSERT INTO users (fullName, email, password) VALUES (?, ?, ?)');
+    const info = insert.run(fullName.trim(), cleanEmail, hashedPassword);
+    const userId = Number(info.lastInsertRowid);
+
+    const newUser = db.prepare('SELECT id, fullName, email, createdAt FROM users WHERE id = ?').get(userId);
+
+    // Automatically log in the user by setting session
+    (req.session as any).userId = userId;
+
+    return res.status(201).json({
+      success: true,
+      message: 'Account created successfully.',
+      user: sanitizeUser(newUser),
+    });
+  } catch (err: any) {
+    console.error('Signup error:', err);
+    return res.status(500).json({ error: 'Internal server error during signup.' });
+  }
+});
+
+/** POST /api/auth/login */
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Please provide both email and password.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user: any = db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    // Set session
+    (req.session as any).userId = user.id;
+
+    return res.json({
+      success: true,
+      message: 'Logged in successfully.',
+      user: sanitizeUser(user),
+    });
+  } catch (err: any) {
+    console.error('Login error:', err);
+    return res.status(500).json({ error: 'Internal server error during login.' });
+  }
+});
+
+/** POST /api/auth/logout */
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ error: 'Failed to log out.' });
+    }
+    res.clearCookie('connect.sid');
+    return res.json({ success: true, message: 'Logged out successfully.' });
+  });
+});
+
+/** GET /api/auth/me */
+app.get('/api/auth/me', (req, res) => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'Not authenticated.' });
+  }
+
+  try {
+    const user = db.prepare('SELECT id, fullName, email, createdAt FROM users WHERE id = ?').get(userId);
+    if (!user) {
+      return res.status(401).json({ error: 'User session invalid.' });
+    }
+    return res.json({ success: true, user: sanitizeUser(user) });
+  } catch (err: any) {
+    console.error('GET /api/auth/me error:', err);
+    return res.status(500).json({ error: 'Failed to verify session.' });
+  }
+});
+
+// ─────────────────────────────────────────────
+// Resume Analysis API Endpoint
+// ─────────────────────────────────────────────
 app.post('/api/analyze-resume', async (req, res) => {
   try {
+    const userId = (req.session as any)?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'You must be logged in to analyze resumes and save history.' });
+    }
+
     const {
       resumeFileBase64,
       resumeFileName,
@@ -152,8 +327,7 @@ app.post('/api/analyze-resume', async (req, res) => {
       });
     }
 
-    // Check Gemini API key configuration (supports 'GEMINI_API_KEY', 'resumeAnalyzer', or other aliases)
-    // Filter out dummy placeholder values like 'MY_GEMINI_API_KEY'
+    // Check Gemini API key configuration
     const candidateKeys = [
       process.env.GEMINI_API_KEY,
       process.env.resumeAnalyzer,
@@ -324,11 +498,9 @@ ${jobDescription.trim()}`;
           const isUnavailable = errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('high demand');
           
           if (isUnavailable && attempt < 2) {
-            // Wait 1.2s before quick retry on high-demand spike
             await new Promise((resolve) => setTimeout(resolve, 1200));
             continue;
           } else {
-            // Move to next candidate model
             break;
           }
         }
@@ -351,8 +523,7 @@ ${jobDescription.trim()}`;
       throw new Error('Gemini model output could not be parsed as valid JSON.');
     }
 
-    // ─── Persist the analysis to SQLite ───────────────────────────────────────
-    // Extract a best-effort job title and company from the job description
+    // ─── Persist the analysis to SQLite with userId ───────────────────────────
     const jdLines = jobDescription.trim().split('\n').map((l: string) => l.trim()).filter(Boolean);
     const titleLine  = jdLines.find((l: string) => /^role[:\s]/i.test(l))   || jdLines[0] || 'Unknown Role';
     const companyLine = jdLines.find((l: string) => /^company[:\s]/i.test(l)) || '';
@@ -364,12 +535,13 @@ ${jobDescription.trim()}`;
     try {
       const insert = db.prepare(`
         INSERT INTO analyses
-          (jobTitle, companyName, matchScore, resumeSource,
+          (userId, jobTitle, companyName, matchScore, resumeSource,
            matchedSkills, missingSkills, resumeEvidence,
            recommendations, learningRoadmap, interviewQuestions)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const info = insert.run(
+        userId,
         jobTitle,
         companyName,
         parsedResult.matchScore ?? 0,
@@ -383,12 +555,10 @@ ${jobDescription.trim()}`;
       );
       savedId = Number(info.lastInsertRowid);
     } catch (dbErr) {
-      // Log but do not fail the response — the analysis itself succeeded
       console.error('Failed to save analysis to SQLite:', dbErr);
     }
     // ──────────────────────────────────────────────────────────────────────────
 
-    // Return the verified analysis data
     return res.status(200).json({
       success: true,
       data: parsedResult,
@@ -401,8 +571,6 @@ ${jobDescription.trim()}`;
     });
   } catch (error: any) {
     console.error('Error in /api/analyze-resume:', error);
-
-    // Handle quota limits and specific API errors gracefully
     const errorMessage = error?.message || String(error);
 
     if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
@@ -424,13 +592,13 @@ ${jobDescription.trim()}`;
 });
 
 // ─────────────────────────────────────────────
-// Analysis History Routes
+// Analysis History Routes (User-Scoped)
 // ─────────────────────────────────────────────
 
-/** Helper: parse JSON columns and convert a raw DB row to a typed object */
 function rowToAnalysis(row: any) {
   return {
     id:                 row.id,
+    userId:             row.userId,
     jobTitle:           row.jobTitle,
     companyName:        row.companyName,
     matchScore:         row.matchScore,
@@ -445,12 +613,17 @@ function rowToAnalysis(row: any) {
   };
 }
 
-/** GET /api/analyses — list all analyses, newest first */
-app.get('/api/analyses', (_req, res) => {
+/** GET /api/analyses — list all analyses for the current user, newest first */
+app.get('/api/analyses', (req, res) => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'You must be logged in to view your analyses.' });
+  }
+
   try {
     const rows = db.prepare(
-      'SELECT * FROM analyses ORDER BY id DESC'
-    ).all();
+      'SELECT * FROM analyses WHERE userId = ? ORDER BY id DESC'
+    ).all(userId);
     return res.json({ success: true, data: rows.map(rowToAnalysis) });
   } catch (err: any) {
     console.error('GET /api/analyses error:', err);
@@ -458,14 +631,20 @@ app.get('/api/analyses', (_req, res) => {
   }
 });
 
-/** GET /api/analyses/:id — fetch one analysis in full */
+/** GET /api/analyses/:id — fetch one analysis in full (ensuring user owns it) */
 app.get('/api/analyses/:id', (req, res) => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'You must be logged in.' });
+  }
+
   const id = parseInt(req.params.id, 10);
   if (isNaN(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid analysis ID. Must be a positive integer.' });
   }
+
   try {
-    const row = db.prepare('SELECT * FROM analyses WHERE id = ?').get(id);
+    const row = db.prepare('SELECT * FROM analyses WHERE id = ? AND userId = ?').get(id, userId);
     if (!row) {
       return res.status(404).json({ error: 'Analysis not found.' });
     }
@@ -476,14 +655,20 @@ app.get('/api/analyses/:id', (req, res) => {
   }
 });
 
-/** DELETE /api/analyses/:id — delete one analysis */
+/** DELETE /api/analyses/:id — delete one analysis (ensuring user owns it) */
 app.delete('/api/analyses/:id', (req, res) => {
+  const userId = (req.session as any)?.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'You must be logged in.' });
+  }
+
   const id = parseInt(req.params.id, 10);
   if (isNaN(id) || id <= 0) {
     return res.status(400).json({ error: 'Invalid analysis ID. Must be a positive integer.' });
   }
+
   try {
-    const info = db.prepare('DELETE FROM analyses WHERE id = ?').run(id);
+    const info = db.prepare('DELETE FROM analyses WHERE id = ? AND userId = ?').run(id, userId);
     if (info.changes === 0) {
       return res.status(404).json({ error: 'Analysis not found.' });
     }
