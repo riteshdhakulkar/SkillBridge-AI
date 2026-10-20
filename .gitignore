@@ -11,3 +11,6 @@ coverage/
 *.db
 *.db-wal
 *.db-shm
+
+# npm lockfile - bun.lock is the canonical lockfile for this project
+package-lock.json

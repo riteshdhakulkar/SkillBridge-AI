@@ -1,0 +1,8 @@
+# bun always writes lockfiles with LF endings. Without this, Git's
+# core.autocrlf=true would rewrite bun.lock to CRLF on checkout, and the
+# next `bun install` would rewrite it back to LF, leaving the working
+# tree permanently dirty.
+bun.lock text eol=lf
+
+# Keep the native script/bin files that ship with the project as-is.
+*.sh text eol=lf
