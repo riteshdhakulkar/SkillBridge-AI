@@ -9,11 +9,11 @@
 -- (camelCase) so no frontend code needs to change.
 -- ============================================================================
 
-CREATE DATABASE IF NOT EXISTS skillbridge_ai
+CREATE DATABASE IF NOT EXISTS skillbridge
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_0900_ai_ci;
 
-USE skillbridge_ai;
+USE skillbridge;
 
 -- ─────────────────────────────────────────────
 -- Table: users

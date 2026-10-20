@@ -200,7 +200,10 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user: any = await queryOne('SELECT * FROM users WHERE email = ?', [cleanEmail]);
+    const user: any = await queryOne(
+      `SELECT id, fullName, email, password, ${CREATED_AT_ISO} FROM users WHERE email = ?`,
+      [cleanEmail]
+    );
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });

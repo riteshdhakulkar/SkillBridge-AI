@@ -33,8 +33,8 @@ function ask(question) {
 async function main() {
   const host = process.env.DB_HOST || '127.0.0.1';
   const port = Number(process.env.DB_PORT) || 3306;
-  const dbName = process.env.DB_NAME || 'skillbridge_ai';
-  const appUser = process.env.DB_USER || 'skillbridge_app';
+  const dbName = process.env.DB_NAME || 'skillbridge';
+  const appUser = process.env.DB_USER || 'root';
   const appPassword = process.env.DB_PASSWORD || '';
 
   const rootUser = process.env.DB_ROOT_USER || (await ask('MySQL admin user [root]: ')) || 'root';
