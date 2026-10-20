@@ -134,6 +134,15 @@ async function extractTextFromDocument(buffer: Buffer, fileName: string): Promis
 // Authentication API Routes
 // ─────────────────────────────────────────────
 
+// Auth responses must never be cached. Without this the browser can serve a
+// stale "logged in" (or "logged out") response straight from its HTTP cache
+// after the session has actually changed, which is exactly what happened
+// when this was first tested.
+app.use('/api/auth', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // Rate limit the credential endpoints. Without this, /api/auth/login can be
 // brute forced against the MySQL users table at full speed.
 const authLimiter = rateLimit({
