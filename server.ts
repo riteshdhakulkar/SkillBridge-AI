@@ -7,7 +7,15 @@ import { createRequire } from 'module';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import session from 'express-session';
-import Database from 'better-sqlite3';
+import {
+  initDb,
+  query,
+  queryOne,
+  execute,
+  closeDb,
+  CREATED_AT_ISO,
+  parseJson,
+} from './db';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
@@ -22,58 +30,14 @@ const app = express();
 const port = Number(process.env.PORT) || 3000;
 
 // ─────────────────────────────────────────────
-// SQLite database initialisation & Authentication
+// MySQL database initialisation
 // ─────────────────────────────────────────────
-const DB_PATH = path.resolve(__dirname, 'analyses.db');
-const db = new Database(DB_PATH);
-
-// Enable WAL mode for better concurrent-read performance
-db.pragma('journal_mode = WAL');
-
-// Create users table
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    fullName  TEXT    NOT NULL,
-    email     TEXT    NOT NULL UNIQUE,
-    password  TEXT    NOT NULL,
-    createdAt TEXT    NOT NULL DEFAULT (datetime('now'))
-  )
-`);
-
-// Create analyses table if not exists
-db.exec(`
-  CREATE TABLE IF NOT EXISTS analyses (
-    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId             INTEGER,
-    jobTitle           TEXT    NOT NULL DEFAULT '',
-    companyName        TEXT    NOT NULL DEFAULT '',
-    matchScore         INTEGER NOT NULL,
-    resumeSource       TEXT    NOT NULL DEFAULT '',
-    matchedSkills      TEXT    NOT NULL DEFAULT '[]',
-    missingSkills      TEXT    NOT NULL DEFAULT '[]',
-    resumeEvidence     TEXT    NOT NULL DEFAULT '[]',
-    recommendations    TEXT    NOT NULL DEFAULT '[]',
-    learningRoadmap    TEXT    NOT NULL DEFAULT '[]',
-    interviewQuestions TEXT    NOT NULL DEFAULT '[]',
-    createdAt          TEXT    NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  )
-`);
-
-// Safe migration: check if userId column exists in analyses table; if not, add it
-try {
-  const tableInfo = db.prepare("PRAGMA table_info(analyses)").all() as Array<{ name: string }>;
-  const hasUserId = tableInfo.some((col) => col.name === 'userId');
-  if (!hasUserId) {
-    db.exec('ALTER TABLE analyses ADD COLUMN userId INTEGER REFERENCES users(id) ON DELETE CASCADE');
-    console.log('Successfully migrated analyses table to include userId column.');
-  }
-} catch (migErr) {
-  console.error('Migration check error:', migErr);
-}
-
-console.log(`SQLite database successfully initialized and ready at: ${DB_PATH}`);
+// The schema lives in schema.sql and is applied on boot. Every statement is
+// CREATE ... IF NOT EXISTS, so this is idempotent and safe to run every time.
+initDb().catch((err) => {
+  console.error('Database initialisation failed:', err?.message || err);
+  process.exit(1);
+});
 
 // ─────────────────────────────────────────────
 // Session secret resolution
@@ -192,7 +156,7 @@ app.post('/api/auth/signup', async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
 
     // Check if user already exists
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
+    const existing = await queryOne('SELECT id FROM users WHERE email = ?', [cleanEmail]);
     if (existing) {
       return res.status(409).json({ error: 'An account with this email address already exists. Please log in.' });
     }
@@ -201,11 +165,16 @@ app.post('/api/auth/signup', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const insert = db.prepare('INSERT INTO users (fullName, email, password) VALUES (?, ?, ?)');
-    const info = insert.run(fullName.trim(), cleanEmail, hashedPassword);
-    const userId = Number(info.lastInsertRowid);
+    const result = await execute(
+      'INSERT INTO users (fullName, email, password) VALUES (?, ?, ?)',
+      [fullName.trim(), cleanEmail, hashedPassword]
+    );
+    const userId = Number(result.insertId);
 
-    const newUser = db.prepare('SELECT id, fullName, email, createdAt FROM users WHERE id = ?').get(userId);
+    const newUser = await queryOne(
+      `SELECT id, fullName, email, ${CREATED_AT_ISO} FROM users WHERE id = ?`,
+      [userId]
+    );
 
     // Automatically log in the user by setting session
     (req.session as any).userId = userId;
@@ -231,7 +200,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user: any = db.prepare('SELECT * FROM users WHERE email = ?').get(cleanEmail);
+    const user: any = await queryOne('SELECT * FROM users WHERE email = ?', [cleanEmail]);
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -269,14 +238,17 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 /** GET /api/auth/me */
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
   const userId = (req.session as any)?.userId;
   if (!userId) {
     return res.status(401).json({ error: 'Not authenticated.' });
   }
 
   try {
-    const user = db.prepare('SELECT id, fullName, email, createdAt FROM users WHERE id = ?').get(userId);
+    const user = await queryOne(
+      `SELECT id, fullName, email, ${CREATED_AT_ISO} FROM users WHERE id = ?`,
+      [userId]
+    );
     if (!user) {
       return res.status(401).json({ error: 'User session invalid.' });
     }
@@ -557,29 +529,29 @@ ${jobDescription.trim()}`;
 
     let savedId: number | null = null;
     try {
-      const insert = db.prepare(`
-        INSERT INTO analyses
+      const result = await execute(
+        `INSERT INTO analyses
           (userId, jobTitle, companyName, matchScore, resumeSource,
            matchedSkills, missingSkills, resumeEvidence,
            recommendations, learningRoadmap, interviewQuestions)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      const info = insert.run(
-        userId,
-        jobTitle,
-        companyName,
-        parsedResult.matchScore ?? 0,
-        resumeSource,
-        JSON.stringify(parsedResult.matchedSkills    ?? []),
-        JSON.stringify(parsedResult.missingSkills    ?? []),
-        JSON.stringify(parsedResult.resumeEvidence   ?? []),
-        JSON.stringify(parsedResult.recommendations  ?? []),
-        JSON.stringify(parsedResult.learningRoadmap  ?? []),
-        JSON.stringify(parsedResult.interviewQuestions ?? []),
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          jobTitle,
+          companyName,
+          parsedResult.matchScore ?? 0,
+          resumeSource,
+          JSON.stringify(parsedResult.matchedSkills ?? []),
+          JSON.stringify(parsedResult.missingSkills ?? []),
+          JSON.stringify(parsedResult.resumeEvidence ?? []),
+          JSON.stringify(parsedResult.recommendations ?? []),
+          JSON.stringify(parsedResult.learningRoadmap ?? []),
+          JSON.stringify(parsedResult.interviewQuestions ?? []),
+        ]
       );
-      savedId = Number(info.lastInsertRowid);
+      savedId = Number(result.insertId);
     } catch (dbErr) {
-      console.error('Failed to save analysis to SQLite:', dbErr);
+      console.error('Failed to save analysis to MySQL:', dbErr);
     }
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -628,26 +600,33 @@ function rowToAnalysis(row: any) {
     matchScore:         row.matchScore,
     resumeSource:       row.resumeSource,
     createdAt:          row.createdAt,
-    matchedSkills:      JSON.parse(row.matchedSkills     || '[]'),
-    missingSkills:      JSON.parse(row.missingSkills     || '[]'),
-    resumeEvidence:     JSON.parse(row.resumeEvidence    || '[]'),
-    recommendations:    JSON.parse(row.recommendations   || '[]'),
-    learningRoadmap:    JSON.parse(row.learningRoadmap   || '[]'),
-    interviewQuestions: JSON.parse(row.interviewQuestions || '[]'),
+    matchedSkills:      parseJson(row.matchedSkills, []),
+    missingSkills:      parseJson(row.missingSkills, []),
+    resumeEvidence:     parseJson(row.resumeEvidence, []),
+    recommendations:    parseJson(row.recommendations, []),
+    learningRoadmap:    parseJson(row.learningRoadmap, []),
+    interviewQuestions: parseJson(row.interviewQuestions, []),
   };
 }
 
 /** GET /api/analyses — list all analyses for the current user, newest first */
-app.get('/api/analyses', (req, res) => {
+app.get('/api/analyses', async (req, res) => {
   const userId = (req.session as any)?.userId;
   if (!userId) {
     return res.status(401).json({ error: 'You must be logged in to view your analyses.' });
   }
 
   try {
-    const rows = db.prepare(
-      'SELECT * FROM analyses WHERE userId = ? ORDER BY id DESC'
-    ).all(userId);
+    const rows = await query(
+      `SELECT id, userId, jobTitle, companyName, matchScore, resumeSource,
+              ${CREATED_AT_ISO},
+              matchedSkills, missingSkills, resumeEvidence,
+              recommendations, learningRoadmap, interviewQuestions
+         FROM analyses
+        WHERE userId = ?
+        ORDER BY id DESC`,
+      [userId]
+    );
     return res.json({ success: true, data: rows.map(rowToAnalysis) });
   } catch (err: any) {
     console.error('GET /api/analyses error:', err);
@@ -656,7 +635,7 @@ app.get('/api/analyses', (req, res) => {
 });
 
 /** GET /api/analyses/:id — fetch one analysis in full (ensuring user owns it) */
-app.get('/api/analyses/:id', (req, res) => {
+app.get('/api/analyses/:id', async (req, res) => {
   const userId = (req.session as any)?.userId;
   if (!userId) {
     return res.status(401).json({ error: 'You must be logged in.' });
@@ -668,7 +647,15 @@ app.get('/api/analyses/:id', (req, res) => {
   }
 
   try {
-    const row = db.prepare('SELECT * FROM analyses WHERE id = ? AND userId = ?').get(id, userId);
+    const row = await queryOne(
+      `SELECT id, userId, jobTitle, companyName, matchScore, resumeSource,
+              ${CREATED_AT_ISO},
+              matchedSkills, missingSkills, resumeEvidence,
+              recommendations, learningRoadmap, interviewQuestions
+         FROM analyses
+        WHERE id = ? AND userId = ?`,
+      [id, userId]
+    );
     if (!row) {
       return res.status(404).json({ error: 'Analysis not found.' });
     }
@@ -680,7 +667,7 @@ app.get('/api/analyses/:id', (req, res) => {
 });
 
 /** DELETE /api/analyses/:id — delete one analysis (ensuring user owns it) */
-app.delete('/api/analyses/:id', (req, res) => {
+app.delete('/api/analyses/:id', async (req, res) => {
   const userId = (req.session as any)?.userId;
   if (!userId) {
     return res.status(401).json({ error: 'You must be logged in.' });
@@ -692,8 +679,11 @@ app.delete('/api/analyses/:id', (req, res) => {
   }
 
   try {
-    const info = db.prepare('DELETE FROM analyses WHERE id = ? AND userId = ?').run(id, userId);
-    if (info.changes === 0) {
+    const result = await execute(
+      'DELETE FROM analyses WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
+    if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Analysis not found.' });
     }
     return res.json({ success: true, message: `Analysis ${id} successfully deleted.` });
@@ -724,9 +714,25 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  const server = app.listen(port, '0.0.0.0', () => {
     console.log(`SkillBridge AI full-stack server running on http://0.0.0.0:${port}`);
   });
+
+  // Close the MySQL pool cleanly so the process can exit without leaving
+  // half-open connections behind.
+  const shutdown = async (signal: string) => {
+    console.log(`\n${signal} received - shutting down...`);
+    server.close();
+    try {
+      await closeDb();
+    } catch (err) {
+      console.error('Error while closing the database pool:', err);
+    }
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 startServer();
