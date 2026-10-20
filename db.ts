@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import MySQLStoreFactory from 'express-mysql-session';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +17,10 @@ dotenv.config();
 // ─────────────────────────────────────────────
 // MySQL connection configuration
 // ─────────────────────────────────────────────
-const config = {
+/**
+ * Connection configuration, shared by the query pool and the session store.
+ */
+export const config = {
   host: process.env.DB_HOST || '127.0.0.1',
   port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
@@ -140,4 +144,40 @@ export async function initDb(): Promise<void> {
  */
 export async function closeDb(): Promise<void> {
   await pool.end();
+}
+
+/**
+ * Build a MySQL-backed session store.
+ *
+ * express-session's default MemoryStore keeps sessions in the process heap,
+ * so every server restart signs every user out and sessions cannot be shared
+ * between instances. Persisting them in the same MySQL schema as the rest of
+ * the app fixes both, and gives us a place to expire old rows.
+ */
+export function createSessionStore(session: any) {
+  const MySQLStore = MySQLStoreFactory(session);
+
+  return new MySQLStore({
+    host: config.host,
+    port: config.port,
+    user: config.user,
+    password: config.password,
+    database: config.database,
+    // The sessions table is also declared in schema.sql, so this is a no-op
+    // once the schema has been applied.
+    createDatabaseTable: true,
+    // Delete expired rows every 15 minutes instead of on every request.
+    clearExpired: true,
+    checkExpirationInterval: 15 * 60 * 1000,
+    // Match the session cookie lifetime.
+    expiration: 7 * 24 * 60 * 60 * 1000,
+    schema: {
+      tableName: 'sessions',
+      columnNames: {
+        session_id: 'session_id',
+        expires: 'expires',
+        data: 'data',
+      },
+    },
+  });
 }

@@ -32,6 +32,19 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ─────────────────────────────────────────────
+-- Table: sessions
+-- ─────────────────────────────────────────────
+-- Backing store for express-session (express-mysql-session). Keeps sessions
+-- alive across server restarts and lets multiple instances share them.
+-- The column names match the module's defaults.
+CREATE TABLE IF NOT EXISTS sessions (
+  session_id  VARCHAR(128) COLLATE utf8mb4_bin NOT NULL,
+  expires     INT UNSIGNED NOT NULL,
+  data        MEDIUMTEXT    COLLATE utf8mb4_bin,
+  PRIMARY KEY (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ─────────────────────────────────────────────
 -- Table: analyses
 -- ─────────────────────────────────────────────
 -- The six skill/roadmap columns were TEXT holding JSON strings in SQLite.

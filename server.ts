@@ -7,12 +7,14 @@ import { createRequire } from 'module';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import session from 'express-session';
+import rateLimit from 'express-rate-limit';
 import {
   initDb,
   query,
   queryOne,
   execute,
   closeDb,
+  createSessionStore,
   CREATED_AT_ISO,
   parseJson,
 } from './db';
@@ -66,11 +68,16 @@ const sessionSecret = SESSION_SECRET || randomBytes(48).toString('hex');
 app.use(
   session({
     secret: sessionSecret,
+    // Persist sessions in MySQL instead of the process heap. The default
+    // MemoryStore signs every user out on restart and cannot be shared
+    // between instances.
+    store: createSessionStore(session),
     resave: false,
     saveUninitialized: false,
     cookie: {
       secure: process.env.NODE_ENV === 'production', // require HTTPS in production
       httpOnly: true,
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
     },
   })
@@ -127,6 +134,30 @@ async function extractTextFromDocument(buffer: Buffer, fileName: string): Promis
 // Authentication API Routes
 // ─────────────────────────────────────────────
 
+// Rate limit the credential endpoints. Without this, /api/auth/login can be
+// brute forced against the MySQL users table at full speed.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 10, // 10 attempts per IP per window
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    error: 'Too many attempts. Please wait 15 minutes and try again.',
+  },
+});
+
+// A separate, tighter budget for signup so an attacker cannot mass-create
+// accounts without hitting the login limit.
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 5, // 5 signups per IP per hour
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    error: 'Too many accounts created from this address. Please try again later.',
+  },
+});
+
 // Helper to sanitize user object (exclude password)
 function sanitizeUser(user: any) {
   if (!user) return null;
@@ -139,7 +170,7 @@ function sanitizeUser(user: any) {
 }
 
 /** POST /api/auth/signup */
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', signupLimiter, async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
 
@@ -191,7 +222,7 @@ app.post('/api/auth/signup', async (req, res) => {
 });
 
 /** POST /api/auth/login */
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
