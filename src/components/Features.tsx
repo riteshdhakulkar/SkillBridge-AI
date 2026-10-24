@@ -6,6 +6,14 @@ import {
   ArrowRight,
   CheckCircle2,
   Sparkles,
+  Zap,
+  MessageSquare,
+  Mail,
+  GraduationCap,
+  ShieldCheck,
+  Download,
+  Search,
+  Share2,
 } from 'lucide-react';
 
 interface FeaturesProps {
@@ -16,99 +24,174 @@ export const Features: React.FC<FeaturesProps> = ({ onSelectFeature }) => {
   const features = [
     {
       id: 'resume-analysis',
-      title: 'AI Resume Analysis',
+      title: 'AI Resume & ATS Match Scanner',
       icon: FileCheck2,
+      badge: 'Core Engine',
       description:
-        'Instant deep diagnostics of your resume. Catch ATS formatting pitfalls, weak action verbs, and missing role keywords before recruiters see them.',
+        'Instant deep diagnostics against live job descriptions. Evaluates keyword overlap, catches formatting pitfalls, and generates an honest match readiness score.',
       capabilities: [
-        'ATS formatting & parsing validation',
-        'STAR-method bullet point optimizer',
-        'Keyword density & relevance scoring',
+        'Deterministic semantic ATS scoring (0-100%)',
+        'Keyword density & critical gap diagnosis',
+        'Direct project evidence validation',
       ],
-      badge: 'Core Scanner',
       ctaText: 'Scan My Resume',
     },
     {
-      id: 'job-matching',
-      title: 'Smart Job Matching',
-      icon: Target,
+      id: 'ats-resume-rewrite',
+      title: 'Gap-Confirmed ATS Resume Studio',
+      icon: Sparkles,
+      badge: 'Recruiter-Ready',
       description:
-        'Evaluate your profile directly against actual job postings. Understand exact qualification overlap and see how competitive your application is.',
+        'Select which missing skills you know, confirm project context, and let AI seamlessly weave them into your real resume in Google XYZ format with 1-click vector PDF export.',
       capabilities: [
-        'Job description skill extraction',
-        'Weighted match rate calculation',
-        'Must-have vs nice-to-have breakdown',
+        'Before vs. After Score Surge gauge',
+        '1-Click Role Switcher presets',
+        'Clean multi-page vector PDF download',
       ],
-      badge: 'Semantic Matching',
-      ctaText: 'Compare with Jobs',
+      ctaText: 'Open Resume Studio',
+    },
+    {
+      id: 'jd-scanner',
+      title: 'Instant JD Keyword Deconstructor',
+      icon: Search,
+      badge: 'Job Intelligence',
+      description:
+        'Paste any job posting from LinkedIn, Indeed, or careers pages to instantly extract must-have hard skills, seniority level, and recruiter screening criteria.',
+      capabilities: [
+        'Critical vs. Nice-to-Have skill breakdown',
+        'Experience & education qualification filters',
+        '1-click auto-fill into Resume Match Engine',
+      ],
+      ctaText: 'Scan Job Posting',
+    },
+    {
+      id: 'bullet-rewriter',
+      title: 'Google XYZ Bullet Rewriter',
+      icon: Zap,
+      badge: 'High Impact',
+      description:
+        'Turn passive college project bullet points into measurable achievements: "Accomplished [X], measured by [Y], by doing [Z]" with 3 tailor-made variations.',
+      capabilities: [
+        'Hard metric & percentage suggestions',
+        'Strong action verbs & technical precision',
+        'Instant 1-click copy to clipboard',
+      ],
+      ctaText: 'Rewrite My Bullets',
+    },
+    {
+      id: 'profile-outreach',
+      title: 'LinkedIn, GitHub & Outreach Suite',
+      icon: Share2,
+      badge: 'Personal Brand',
+      description:
+        'Generate high-CTR LinkedIn headlines, recruiter-ready "About" summaries, GitHub bios, and personalized recruiter cold DMs and InMails in seconds.',
+      capabilities: [
+        '3 Algorithm-optimized LinkedIn headlines',
+        'LinkedIn connection notes under 300 chars',
+        'Cold emails with eye-catching subjects',
+      ],
+      ctaText: 'Generate Social Assets',
+    },
+    {
+      id: 'mock-interview',
+      title: 'STAR Technical Interview Prep',
+      icon: MessageSquare,
+      badge: 'Interview Ready',
+      description:
+        'Practice answering role-specific technical and behavioral questions. Receive immediate AI scoring (1-10) using the STAR methodology with tailored model answers.',
+      capabilities: [
+        'Grounded in your real resume projects',
+        'Instant STAR scoring, strengths & critiques',
+        'Upgraded recruiter-ready model answers',
+      ],
+      ctaText: 'Practice Interviews',
+    },
+    {
+      id: 'cover-letter',
+      title: 'Personalized AI Cover Letters',
+      icon: Mail,
+      badge: 'Tailored Pitch',
+      description:
+        'Generate compelling, personalized cover letters tailored to specific hiring managers. Highlights your academic milestones and directly addresses company needs.',
+      capabilities: [
+        'Tone selection: Confident, Enthusiastic, Formal',
+        'Key hooks & attention-grabbing subject lines',
+        '1-click export to PDF and text (.txt)',
+      ],
+      ctaText: 'Generate Cover Letter',
     },
     {
       id: 'learning-roadmaps',
-      title: 'Personalized Learning Roadmaps',
+      title: 'Roadmaps & Progress Tracker',
       icon: Compass,
+      badge: 'Progress Tracker',
       description:
-        'Turn your identified skill gaps into step-by-step learning sprints. Get curated tutorials, open-source projects, and portfolio-worthy tasks.',
+        'Transform skill gaps into structured learning milestones. Track task progress (Not Started, In Progress, Completed) with persistent database sync and progress bars.',
       capabilities: [
-        'Tailored milestone timelines',
-        'Curated free student learning paths',
-        'Practical portfolio project prompts',
+        'Step-by-step milestone sprint breakdown',
+        'Curated free student learning resources',
+        'Persistent database tracking',
       ],
-      badge: 'Skill Growth',
-      ctaText: 'View Learning Paths',
+      ctaText: 'View My Progress',
     },
   ];
 
   return (
-    <section id="features" className="relative scroll-mt-16 bg-slate-50/70 py-20 border-y border-slate-200/80">
+    <section id="features" className="relative scroll-mt-16 bg-[#FAF7F2] py-24 border-b border-[#b7a89a]/35">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="mx-auto max-w-2xl text-center">
-          <div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-indigo-600">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Platform Capabilities</span>
+        <div className="mx-auto max-w-2xl text-center space-y-4">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#b7a89a]/70 bg-[#e8dcc6]/45 px-4 py-1.5 text-xs font-semibold text-[#722f37] shadow-2xs backdrop-blur-md">
+            <Sparkles className="h-3.5 w-3.5 text-[#722f37]" />
+            <span className="tracking-wider uppercase text-[11px] font-bold">Complete Career Suite</span>
           </div>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            Everything Students Need to Stand Out
+
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#231815]">
+            Everything Students Need to{' '}
+            <span className="font-display italic font-normal text-[#722f37]">
+              Land Tech Offers.
+            </span>
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
-            Purpose-built tools designed to demystify technical hiring criteria and turn your college experience into an interview magnet.
+
+          <p className="text-sm sm:text-base leading-relaxed text-[#574943]">
+            A curated career suite designed to bridge your college coursework and projects directly into recruiter interviews with aesthetic clarity.
           </p>
         </div>
 
-        {/* Feature Cards Grid (3 cards) */}
-        <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+        {/* Feature Cards Grid */}
+        <div className="mt-16 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {features.map((feature) => {
             const Icon = feature.icon;
             return (
               <div
                 key={feature.id}
-                className="group relative flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-8 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-500/5"
+                className="group relative flex flex-col justify-between rounded-3xl border border-[#b7a89a]/40 bg-[#FAF7F2] p-6 shadow-xs transition-all duration-300 hover:-translate-y-1.5 hover:border-[#722f37]/50 hover:shadow-xl hover:shadow-[#722f37]/10"
               >
                 <div>
                   {/* Icon & Category Badge */}
                   <div className="flex items-center justify-between">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-600 group-hover:text-white">
-                      <Icon className="h-6 w-6" />
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e8dcc6]/60 border border-[#b7a89a]/40 text-[#722f37] shadow-2xs transition-transform duration-300 group-hover:scale-105 group-hover:bg-[#722f37] group-hover:text-[#FAF7F2]">
+                      <Icon className="h-5 w-5" />
                     </div>
-                    <span className="text-xs font-semibold text-slate-400 group-hover:text-indigo-600 transition-colors">
+                    <span className="text-[10px] font-bold text-[#722f37] bg-[#e8dcc6]/40 px-2.5 py-0.5 rounded-full border border-[#b7a89a]/50">
                       {feature.badge}
                     </span>
                   </div>
 
                   {/* Title & Description */}
-                  <h3 className="mt-6 text-xl font-bold tracking-tight text-slate-900">
+                  <h3 className="mt-5 font-display text-base font-bold text-[#231815] group-hover:text-[#722f37] transition-colors">
                     {feature.title}
                   </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                  <p className="mt-2 text-xs leading-relaxed text-[#574943]">
                     {feature.description}
                   </p>
 
                   {/* Capabilities List */}
-                  <div className="mt-6 border-t border-slate-100 pt-5">
-                    <ul className="space-y-2.5">
+                  <div className="mt-5 border-t border-[#e8dcc6] pt-4">
+                    <ul className="space-y-1.5">
                       {feature.capabilities.map((cap, idx) => (
-                        <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-600">
-                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                        <li key={idx} className="flex items-start gap-2 text-xs text-[#574943]">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#722f37]" />
                           <span>{cap}</span>
                         </li>
                       ))}
@@ -116,15 +199,15 @@ export const Features: React.FC<FeaturesProps> = ({ onSelectFeature }) => {
                   </div>
                 </div>
 
-                {/* Card Action Link */}
-                <div className="mt-8 pt-4">
+                {/* Card Action Button */}
+                <div className="mt-6 pt-2">
                   <button
                     type="button"
                     onClick={() => onSelectFeature(feature.title)}
-                    className="group/btn inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 transition-all hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-600 active:scale-[0.99] cursor-pointer"
+                    className="group/btn inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#b7a89a]/60 bg-[#e8dcc6]/30 py-2.5 text-xs font-bold text-[#231815] shadow-2xs transition-all hover:bg-[#722f37] hover:text-[#FAF7F2] hover:border-[#722f37] active:scale-[0.98] cursor-pointer"
                   >
                     <span>{feature.ctaText}</span>
-                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-0.5" />
+                    <ArrowRight className="h-3.5 w-3.5 text-[#722f37] transition-transform group-hover/btn:translate-x-1 group-hover/btn:text-[#FAF7F2]" />
                   </button>
                 </div>
               </div>

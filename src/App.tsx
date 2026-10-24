@@ -2,15 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { Features } from './components/Features';
+import { CareerToolsSection } from './components/CareerToolsSection';
+import { AestheticTransformationSlider } from './components/AestheticTransformationSlider';
 import { Footer } from './components/Footer';
 import { DashboardPage } from './components/DashboardPage';
 import { ResumeAnalysisPage } from './components/ResumeAnalysisPage';
+import { ProgressPage } from './components/ProgressPage';
 import { AuthModal } from './components/AuthModal';
+import { JDAnalyzerModal } from './components/JDAnalyzerModal';
+import { ProfileAssetsModal } from './components/ProfileAssetsModal';
+import { RecruiterOutreachModal } from './components/RecruiterOutreachModal';
 import { User } from './types/analysis';
 import { Sparkles, Lock, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<'home' | 'dashboard' | 'analyze'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'dashboard' | 'analyze' | 'progress'>(() => {
+    try {
+      const saved = sessionStorage.getItem('skillbridge_nav_page') as 'home' | 'dashboard' | 'analyze' | 'progress' | null;
+      if (saved && ['home', 'dashboard', 'analyze', 'progress'].includes(saved)) {
+        return saved;
+      }
+      if (localStorage.getItem('skillbridge_active_analysis')) {
+        return 'analyze';
+      }
+    } catch {
+      // storage error fallback
+    }
+    return 'home';
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('skillbridge_nav_page', currentPage);
+    } catch {
+      // storage error fallback
+    }
+  }, [currentPage]);
   const [targetRoleContext, setTargetRoleContext] = useState<string | undefined>(undefined);
   const [dashboardRefreshToken, setDashboardRefreshToken] = useState<number>(0);
 
@@ -19,6 +46,11 @@ export default function App() {
   const [authChecking, setAuthChecking] = useState<boolean>(true);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+
+  // Career Accelerator Tools State
+  const [jdModalOpen, setJdModalOpen] = useState<boolean>(false);
+  const [profileAssetsModalOpen, setProfileAssetsModalOpen] = useState<boolean>(false);
+  const [outreachModalOpen, setOutreachModalOpen] = useState<boolean>(false);
 
   // Check active session on mount
   useEffect(() => {
@@ -66,6 +98,16 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleNavigateProgress = () => {
+    if (!currentUser) {
+      setAuthModalMode('login');
+      setAuthModalOpen(true);
+      return;
+    }
+    setCurrentPage('progress');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleAnalysisSaved = (_savedId?: number) => {
     setDashboardRefreshToken((prev) => prev + 1);
   };
@@ -96,17 +138,17 @@ export default function App() {
 
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center text-slate-500 text-sm">
+      <div className="min-h-screen bg-[#FBFBF9] flex items-center justify-center text-stone-500 text-sm">
         <div className="flex items-center gap-3">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-          <span>Loading SkillBridge AI...</span>
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+          <span className="font-medium text-stone-700">Loading SkillBridge AI...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 selection:bg-indigo-100 selection:text-indigo-900 flex flex-col font-sans antialiased">
+    <div className="min-h-screen bg-[#FAF7F2] text-[#231815] selection:bg-[#e8dcc6] selection:text-[#722f37] flex flex-col font-sans antialiased">
       {/* Top Navigation Bar */}
       <Navbar
         currentPage={currentPage}
@@ -114,6 +156,7 @@ export default function App() {
         onNavigateHome={handleNavigateHome}
         onNavigateDashboard={handleNavigateDashboard}
         onNavigateAnalyze={() => handleNavigateAnalyze()}
+        onNavigateProgress={handleNavigateProgress}
         onOpenLogin={() => {
           setAuthModalMode('login');
           setAuthModalOpen(true);
@@ -123,6 +166,9 @@ export default function App() {
           setAuthModalOpen(true);
         }}
         onLogout={handleLogout}
+        onOpenJDScanner={() => setJdModalOpen(true)}
+        onOpenProfileAssets={() => setProfileAssetsModalOpen(true)}
+        onOpenOutreach={() => setOutreachModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -140,6 +186,26 @@ export default function App() {
                 }
               }}
               onExploreClick={handleExploreFeatures}
+            />
+
+            {/* Interactive Before & After Transformation Slider */}
+            <AestheticTransformationSlider
+              onAnalyzeClick={() => {
+                if (!currentUser) {
+                  setAuthModalMode('signup');
+                  setAuthModalOpen(true);
+                } else {
+                  handleNavigateAnalyze();
+                }
+              }}
+            />
+
+            {/* Career Accelerator Tools Showcase */}
+            <CareerToolsSection
+              onOpenJDScanner={() => setJdModalOpen(true)}
+              onOpenProfileAssets={() => setProfileAssetsModalOpen(true)}
+              onOpenOutreach={() => setOutreachModalOpen(true)}
+              onNavigateAnalyze={() => handleNavigateAnalyze()}
             />
 
             {/* Feature Cards Section */}
@@ -164,11 +230,11 @@ export default function App() {
             />
           ) : (
             <div className="mx-auto max-w-md px-4 py-20 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 mb-4">
-                <Lock className="h-7 w-7" />
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8dcc6]/60 text-[#722f37] mb-4 border border-[#b7a89a]/50 shadow-xs">
+                <Lock className="h-7 w-7 text-[#722f37]" />
               </div>
-              <h2 className="text-xl font-bold text-slate-900">Sign In Required</h2>
-              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+              <h2 className="font-display text-2xl font-bold text-[#231815]">Sign In Required</h2>
+              <p className="mt-2 text-xs text-[#574943] leading-relaxed">
                 Please sign in or create an account to access your personal dashboard and saved resume analyses.
               </p>
               <div className="mt-6 flex items-center justify-center gap-3">
@@ -178,9 +244,9 @@ export default function App() {
                     setAuthModalMode('login');
                     setAuthModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#b7a89a]/60 bg-[#FAF7F2] px-5 py-2.5 text-xs font-bold text-[#231815] hover:bg-[#e8dcc6]/40 transition-colors cursor-pointer"
                 >
-                  <LogIn className="h-4 w-4 text-slate-500" />
+                  <LogIn className="h-4 w-4 text-[#722f37]" />
                   <span>Sign In</span>
                 </button>
                 <button
@@ -189,9 +255,9 @@ export default function App() {
                     setAuthModalMode('signup');
                     setAuthModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#722f37] hover:bg-[#551b22] px-5 py-2.5 text-xs font-bold text-[#FAF7F2] shadow-md shadow-[#722f37]/20 transition-colors cursor-pointer"
                 >
-                  <UserPlus className="h-4 w-4" />
+                  <UserPlus className="h-4 w-4 text-[#e8dcc6]" />
                   <span>Create Account</span>
                 </button>
               </div>
@@ -205,14 +271,16 @@ export default function App() {
               onNavigateDashboard={handleNavigateDashboard}
               initialRole={targetRoleContext}
               onAnalysisSaved={handleAnalysisSaved}
+              onOpenProfileAssets={() => setProfileAssetsModalOpen(true)}
+              onOpenOutreach={() => setOutreachModalOpen(true)}
             />
           ) : (
             <div className="mx-auto max-w-md px-4 py-20 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 mb-4">
-                <Lock className="h-7 w-7" />
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8dcc6]/60 text-[#722f37] mb-4 border border-[#b7a89a]/50 shadow-xs">
+                <Lock className="h-7 w-7 text-[#722f37]" />
               </div>
-              <h2 className="text-xl font-bold text-slate-900">Sign In Required</h2>
-              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+              <h2 className="font-display text-2xl font-bold text-[#231815]">Sign In Required</h2>
+              <p className="mt-2 text-xs text-[#574943] leading-relaxed">
                 Please sign in or create an account to run resume evaluations and save your analyses.
               </p>
               <div className="mt-6 flex items-center justify-center gap-3">
@@ -222,9 +290,9 @@ export default function App() {
                     setAuthModalMode('login');
                     setAuthModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#b7a89a]/60 bg-[#FAF7F2] px-5 py-2.5 text-xs font-bold text-[#231815] hover:bg-[#e8dcc6]/40 transition-colors cursor-pointer"
                 >
-                  <LogIn className="h-4 w-4 text-slate-500" />
+                  <LogIn className="h-4 w-4 text-[#722f37]" />
                   <span>Sign In</span>
                 </button>
                 <button
@@ -233,9 +301,52 @@ export default function App() {
                     setAuthModalMode('signup');
                     setAuthModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#722f37] hover:bg-[#551b22] px-5 py-2.5 text-xs font-bold text-[#FAF7F2] shadow-md shadow-[#722f37]/20 transition-colors cursor-pointer"
                 >
-                  <UserPlus className="h-4 w-4" />
+                  <UserPlus className="h-4 w-4 text-[#e8dcc6]" />
+                  <span>Create Account</span>
+                </button>
+              </div>
+            </div>
+          )
+        )}
+
+        {currentPage === 'progress' && (
+          currentUser ? (
+            <ProgressPage
+              onNavigateAnalyze={handleNavigateAnalyze}
+              onNavigateDashboard={handleNavigateDashboard}
+            />
+          ) : (
+            <div className="mx-auto max-w-md px-4 py-20 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8dcc6]/60 text-[#722f37] mb-4 border border-[#b7a89a]/50 shadow-xs">
+                <Lock className="h-7 w-7 text-[#722f37]" />
+              </div>
+              <h2 className="font-display text-2xl font-bold text-[#231815]">Sign In Required</h2>
+              <p className="mt-2 text-xs text-[#574943] leading-relaxed">
+                Please sign in or create an account to view and track your personalized skill progress.
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthModalMode('login');
+                    setAuthModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#b7a89a]/60 bg-[#FAF7F2] px-5 py-2.5 text-xs font-bold text-[#231815] hover:bg-[#e8dcc6]/40 transition-colors cursor-pointer"
+                >
+                  <LogIn className="h-4 w-4 text-[#722f37]" />
+                  <span>Sign In</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthModalMode('signup');
+                    setAuthModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#722f37] hover:bg-[#551b22] px-5 py-2.5 text-xs font-bold text-[#FAF7F2] shadow-md shadow-[#722f37]/20 transition-colors cursor-pointer"
+                >
+                  <UserPlus className="h-4 w-4 text-[#e8dcc6]" />
                   <span>Create Account</span>
                 </button>
               </div>
@@ -243,6 +354,7 @@ export default function App() {
           )
         )}
       </main>
+
 
       {/* Auth Modal */}
       <AuthModal
@@ -254,6 +366,39 @@ export default function App() {
           setCurrentPage('dashboard');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
+      />
+
+      {/* Feature 2: Instant Job Description Deconstructor */}
+      <JDAnalyzerModal
+        isOpen={jdModalOpen}
+        onClose={() => setJdModalOpen(false)}
+        onApplyJDToAnalysis={(jd, role) => {
+          if (!currentUser) {
+            setAuthModalMode('login');
+            setAuthModalOpen(true);
+          } else {
+            handleNavigateAnalyze(role);
+            try {
+              sessionStorage.setItem('skillbridge_prefilled_jd', jd);
+            } catch {}
+          }
+        }}
+      />
+
+      {/* Feature 3: LinkedIn & GitHub Profile Optimizer */}
+      <ProfileAssetsModal
+        isOpen={profileAssetsModalOpen}
+        onClose={() => setProfileAssetsModalOpen(false)}
+        candidateName={currentUser?.fullName || 'Ritesh Dhakulkar'}
+        targetTitle={targetRoleContext || 'Junior Full-Stack Developer'}
+      />
+
+      {/* Feature 4: Recruiter Cold Outreach Generator */}
+      <RecruiterOutreachModal
+        isOpen={outreachModalOpen}
+        onClose={() => setOutreachModalOpen(false)}
+        defaultCandidateName={currentUser?.fullName || 'Ritesh Dhakulkar'}
+        defaultRole={targetRoleContext || 'Junior Full-Stack Developer'}
       />
 
       {/* Reusable Simple Footer */}

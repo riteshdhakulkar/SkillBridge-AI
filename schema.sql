@@ -64,10 +64,41 @@ CREATE TABLE IF NOT EXISTS analyses (
   recommendations    JSON         NOT NULL,
   learningRoadmap    JSON         NOT NULL,
   interviewQuestions JSON         NOT NULL,
+  contentHash        VARCHAR(64)  NULL,
+  resumeText         MEDIUMTEXT   NULL,
   createdAt          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   -- Covers "WHERE userId = ? ORDER BY id DESC", which had no index in SQLite.
   KEY idx_analyses_user_created (userId, createdAt),
+  KEY idx_analyses_content_hash (userId, contentHash),
   CONSTRAINT fk_analyses_user
     FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ─────────────────────────────────────────────
+-- Table: task_progress
+-- ─────────────────────────────────────────────
+-- Personalized skill progress tracker for roadmap milestones and learning tasks.
+-- Survives restarts, strictly isolates by user, and uses stable task identifiers.
+CREATE TABLE IF NOT EXISTS task_progress (
+  id           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  userId       INT UNSIGNED NOT NULL,
+  analysisId   INT UNSIGNED NOT NULL,
+  taskId       VARCHAR(128) NOT NULL,
+  milestone    VARCHAR(255) NOT NULL,
+  title        VARCHAR(500) NOT NULL,
+  timeframe    VARCHAR(100) NOT NULL DEFAULT '',
+  resource     VARCHAR(500) NOT NULL DEFAULT '',
+  status       VARCHAR(32)  NOT NULL DEFAULT 'not_started',
+  completedAt  DATETIME     NULL,
+  updatedAt    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  createdAt    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_user_task (userId, taskId),
+  KEY idx_progress_user_status (userId, status),
+  KEY idx_progress_analysis (analysisId),
+  CONSTRAINT fk_progress_user
+    FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_progress_analysis
+    FOREIGN KEY (analysisId) REFERENCES analyses (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
