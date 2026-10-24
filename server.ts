@@ -553,12 +553,12 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     );
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return res.status(401).json({ error: 'User not found. No account is registered with this email address. Please sign up.' });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return res.status(401).json({ error: 'Incorrect password. Please try again.' });
     }
 
     // Set session

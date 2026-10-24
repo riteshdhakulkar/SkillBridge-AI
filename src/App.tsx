@@ -57,17 +57,31 @@ export default function App() {
     async function checkSession() {
       try {
         const res = await fetch('/api/auth/me');
-        if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
           const json = await res.json();
           if (json.success && json.user) {
             setCurrentUser(json.user);
+            try {
+              localStorage.setItem('skillbridge_auth_user', JSON.stringify(json.user));
+            } catch {}
+            setAuthChecking(false);
+            return;
           }
         }
       } catch (err) {
         console.error('Session check error:', err);
-      } finally {
-        setAuthChecking(false);
       }
+
+      // Fallback for static environments (e.g. Vercel)
+      try {
+        const saved = localStorage.getItem('skillbridge_auth_user');
+        if (saved) {
+          setCurrentUser(JSON.parse(saved));
+        }
+      } catch {}
+
+      setAuthChecking(false);
     }
     checkSession();
   }, []);
@@ -118,6 +132,9 @@ export default function App() {
     } catch (err) {
       console.error('Logout error:', err);
     }
+    try {
+      localStorage.removeItem('skillbridge_auth_user');
+    } catch {}
     setCurrentUser(null);
     setCurrentPage('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });

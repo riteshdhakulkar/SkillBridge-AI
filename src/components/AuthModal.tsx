@@ -54,24 +54,108 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       const endpoint = mode === 'signup' ? '/api/auth/signup' : '/api/auth/login';
+      const cleanEmail = email.trim().toLowerCase();
       const payload = mode === 'signup'
-        ? { fullName: fullName.trim(), email: email.trim(), password }
-        : { email: email.trim(), password };
+        ? { fullName: fullName.trim(), email: cleanEmail, password }
+        : { email: cleanEmail, password };
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let serverHandled = false;
 
-      const json = await res.json();
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Authentication failed');
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const json = await res.json();
+          serverHandled = true;
+
+          if (res.ok && json.success && json.user) {
+            try {
+              localStorage.setItem('skillbridge_auth_user', JSON.stringify(json.user));
+            } catch {}
+            onSuccess(json.user);
+            onClose();
+            return;
+          }
+
+          if (json.error) {
+            setError(json.error);
+            return;
+          }
+        }
+      } catch (networkErr) {
+        // Server offline or network error
       }
 
-      onSuccess(json.user);
-      onClose();
+      // Fallback for static environments (e.g. Vercel without separate Node/MySQL backend)
+      let registeredUsers: any[] = [];
+      try {
+        registeredUsers = JSON.parse(localStorage.getItem('skillbridge_registered_users') || '[]');
+      } catch {
+        registeredUsers = [];
+      }
+
+      const existingUser = registeredUsers.find((u: any) => u.email.toLowerCase() === cleanEmail);
+
+      if (mode === 'login') {
+        if (!existingUser) {
+          setError('User not found. No account is registered with this email address. Please sign up first.');
+          return;
+        }
+        if (existingUser.password !== password) {
+          setError('Incorrect password. Please try again.');
+          return;
+        }
+        const userObj = {
+          id: existingUser.id,
+          fullName: existingUser.fullName,
+          email: existingUser.email,
+          createdAt: existingUser.createdAt,
+        };
+        try {
+          localStorage.setItem('skillbridge_auth_user', JSON.stringify(userObj));
+        } catch {}
+        onSuccess(userObj);
+        onClose();
+        return;
+      }
+
+      if (mode === 'signup') {
+        if (existingUser) {
+          setError('An account with this email already exists. Please sign in instead.');
+          return;
+        }
+        const newUser = {
+          id: Date.now(),
+          fullName: fullName.trim(),
+          email: cleanEmail,
+          password: password,
+          createdAt: new Date().toISOString(),
+        };
+        registeredUsers.push(newUser);
+        try {
+          localStorage.setItem('skillbridge_registered_users', JSON.stringify(registeredUsers));
+        } catch {}
+
+        const userObj = {
+          id: newUser.id,
+          fullName: newUser.fullName,
+          email: newUser.email,
+          createdAt: newUser.createdAt,
+        };
+        try {
+          localStorage.setItem('skillbridge_auth_user', JSON.stringify(userObj));
+        } catch {}
+        onSuccess(userObj);
+        onClose();
+        return;
+      }
+
+      setError('Authentication failed. Please try again.');
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred. Please try again.');
     } finally {
@@ -127,9 +211,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 flex items-start gap-2.5">
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700 flex items-start gap-2.5 animate-in fade-in duration-150">
               <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
-              <div className="flex-1 leading-relaxed">{error}</div>
+              <div className="flex-1 leading-relaxed space-y-1.5">
+                <p>{error}</p>
+                {mode === 'login' && error.includes('User not found') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signup');
+                      setError(null);
+                    }}
+                    className="inline-flex items-center gap-1 font-bold text-[#722f37] hover:underline cursor-pointer"
+                  >
+                    <span>Create an account now with this email</span>
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
