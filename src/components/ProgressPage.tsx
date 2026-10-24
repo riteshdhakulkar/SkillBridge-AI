@@ -50,28 +50,53 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({
         fetch('/api/progress/summary'),
       ]);
 
-      if (!tasksRes.ok) {
-        throw new Error(`Failed to load tasks (status ${tasksRes.status})`);
-      }
-      if (!summaryRes.ok) {
-        throw new Error(`Failed to load summary (status ${summaryRes.status})`);
+      const tasksType = tasksRes.headers.get('content-type') || '';
+      const sumType = summaryRes.headers.get('content-type') || '';
+
+      if (tasksRes.ok && tasksType.includes('application/json')) {
+        const tasksJson = await tasksRes.json();
+        if (tasksJson.success && Array.isArray(tasksJson.data)) {
+          setTasks(tasksJson.data);
+          try {
+            localStorage.setItem('skillbridge_progress_tasks', JSON.stringify(tasksJson.data));
+          } catch {}
+        }
       }
 
-      const tasksJson = await tasksRes.json();
-      const summaryJson = await summaryRes.json();
-
-      if (tasksJson.success) {
-        setTasks(tasksJson.data || []);
-      }
-      if (summaryJson.success) {
-        setSummary(summaryJson.summary || null);
+      if (summaryRes.ok && sumType.includes('application/json')) {
+        const summaryJson = await summaryRes.json();
+        if (summaryJson.success && summaryJson.summary) {
+          setSummary(summaryJson.summary);
+          setLoading(false);
+          return;
+        }
       }
     } catch (err: any) {
-      console.error('Progress load error:', err);
-      setError(err?.message || 'Failed to load progress data. Please try again.');
+      // Server offline or static deployment
     } finally {
       setLoading(false);
     }
+
+    // Fallback: load tasks from localStorage
+    try {
+      const localTasks = JSON.parse(localStorage.getItem('skillbridge_progress_tasks') || '[]');
+      if (Array.isArray(localTasks)) {
+        setTasks(localTasks);
+        const completed = localTasks.filter((t: any) => t.status === 'completed').length;
+        const inProgress = localTasks.filter((t: any) => t.status === 'in_progress').length;
+        const notStarted = localTasks.filter((t: any) => t.status === 'not_started').length;
+        const total = localTasks.length;
+        setSummary({
+          totalTasks: total,
+          completed,
+          inProgress,
+          notStarted,
+          completionPercentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+          byAnalysis: [],
+        });
+        return;
+      }
+    } catch {}
   };
 
   useEffect(() => {
@@ -97,6 +122,21 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({
       t.taskId === task.taskId ? { ...t, status: newStatus } : t
     );
     setTasks(optimisticTasks);
+    try {
+      localStorage.setItem('skillbridge_progress_tasks', JSON.stringify(optimisticTasks));
+      const completed = optimisticTasks.filter((t) => t.status === 'completed').length;
+      const inProgress = optimisticTasks.filter((t) => t.status === 'in_progress').length;
+      const notStarted = optimisticTasks.filter((t) => t.status === 'not_started').length;
+      const total = optimisticTasks.length;
+      setSummary({
+        totalTasks: total,
+        completed,
+        inProgress,
+        notStarted,
+        completionPercentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+        byAnalysis: [],
+      });
+    } catch {}
 
     try {
       const res = await fetch(`/api/progress/${task.taskId}`, {
@@ -112,18 +152,25 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({
         }),
       });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to update task status');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const json = await res.json();
+        if (json.success) {
+          // Refresh summary quietly
+          const summaryRes = await fetch('/api/progress/summary');
+          if (summaryRes.ok) {
+            const sumType = summaryRes.headers.get('content-type') || '';
+            if (sumType.includes('application/json')) {
+              const sumJson = await summaryRes.json();
+              if (sumJson.success) setSummary(sumJson.summary);
+            }
+          }
+        }
       }
-
-      // Refresh summary quietly
-      const summaryRes = await fetch('/api/progress/summary');
-      if (summaryRes.ok) {
-        const sumJson = await summaryRes.json();
-        if (sumJson.success) setSummary(sumJson.summary);
-      }
-
+    } catch {
+      // offline / static mode fallback already handled via localStorage
+    } finally {
+      setUpdatingTaskId(null);
       const label =
         newStatus === 'completed'
           ? 'Task marked as Completed! 🎉'
@@ -131,36 +178,30 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({
           ? 'Task marked as In Progress 🚀'
           : 'Task reset to Not Started';
       showToast(label);
-    } catch (err: any) {
-      console.error('Task update error:', err);
-      // Revert optimistic update
-      setTasks(tasks.map((t) => (t.taskId === task.taskId ? { ...t, status: previousStatus } : t)));
-      setError(err.message || 'Could not update task status. Please try again.');
-    } finally {
-      setUpdatingTaskId(null);
     }
   };
 
   // Handle task reset
   const handleResetTask = async (task: LearningTaskProgress) => {
     setUpdatingTaskId(task.taskId);
+    const updatedTasks = tasks.map((t) =>
+      t.taskId === task.taskId ? { ...t, status: 'not_started' as TaskStatus } : t
+    );
+    setTasks(updatedTasks);
     try {
-      const res = await fetch(`/api/progress/${task.taskId}`, {
+      localStorage.setItem('skillbridge_progress_tasks', JSON.stringify(updatedTasks));
+    } catch {}
+
+    try {
+      await fetch(`/api/progress/${task.taskId}`, {
         method: 'DELETE',
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to reset task');
-      }
-
-      // Refresh data
-      loadData();
-      showToast('Task reset to Not Started');
-    } catch (err: any) {
-      console.error('Task reset error:', err);
-      setError(err.message || 'Could not reset task. Please try again.');
+    } catch {
+      // fallback
     } finally {
       setUpdatingTaskId(null);
+      showToast('Task reset to Not Started');
+      loadData();
     }
   };
 

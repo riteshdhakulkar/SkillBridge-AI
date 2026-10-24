@@ -13,6 +13,7 @@ import {
   Code2,
 } from 'lucide-react';
 import { ProfileAssetsResult } from '../types/analysis';
+import { generateProfileAssetsClientSide } from '../utils/clientAnalysisEngine';
 
 interface ProfileAssetsModalProps {
   isOpen: boolean;
@@ -53,23 +54,40 @@ export const ProfileAssetsModal: React.FC<ProfileAssetsModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/generate-profile-assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: ProfileAssetsResult | null = null;
+      try {
+        const res = await fetch('/api/generate-profile-assets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidateName,
+            targetTitle,
+            skills,
+            projects,
+          }),
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            data = json.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
+      }
+
+      if (!data) {
+        data = generateProfileAssetsClientSide({
           candidateName,
           targetTitle,
           skills,
           projects,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to generate profile assets.');
+        });
       }
 
-      setAssets(json.data);
+      setAssets(data);
     } catch (err: any) {
       setError(err.message || 'Error generating assets.');
     } finally {

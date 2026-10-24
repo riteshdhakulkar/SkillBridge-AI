@@ -32,6 +32,11 @@ import {
   MissingSkill,
 } from '../types/analysis';
 import { generateResumePDF } from '../utils/resumePdfExport';
+import {
+  extractTextFromBase64,
+  generateATSResumeClientSide,
+  rewriteBulletClientSide,
+} from '../utils/clientAnalysisEngine';
 
 interface ATSResumeOptimizerProps {
   resumeText: string;
@@ -148,17 +153,33 @@ export const ATSResumeOptimizer: React.FC<ATSResumeOptimizerProps> = ({
       reader.onload = async () => {
         try {
           const base64 = reader.result as string;
-          const res = await fetch('/api/extract-resume-text', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
-          });
-          const data = await res.json();
-          if (res.ok && data.success && data.text) {
-            setCustomResumeText(data.text);
+          let extracted = '';
+          try {
+            const res = await fetch('/api/extract-resume-text', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileBase64: base64, fileName: file.name }),
+            });
+            const contentType = res.headers.get('content-type') || '';
+            if (res.ok && contentType.includes('application/json')) {
+              const data = await res.json();
+              if (data.success && data.text) {
+                extracted = data.text;
+              }
+            }
+          } catch {
+            // server offline / Vercel static
+          }
+
+          if (!extracted) {
+            extracted = extractTextFromBase64(base64);
+          }
+
+          if (extracted && extracted.trim().length > 15) {
+            setCustomResumeText(extracted);
             setShowSourceText(true);
           } else {
-            setError(data.error || 'Failed to extract text from file.');
+            setError('Could not extract legible text from file. You can paste plain text directly below.');
           }
         } catch (uploadErr: any) {
           setError(uploadErr.message || 'Error processing document.');
@@ -188,24 +209,42 @@ export const ATSResumeOptimizer: React.FC<ATSResumeOptimizerProps> = ({
         ? customResumeText.trim()
         : resumeText;
 
-      const res = await fetch('/api/generate-ats-resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resumeText: effectiveText,
-          jobDescription,
-          targetRole: targetRole || 'Target Role',
-          confirmedSkills,
-          analysisId,
-        }),
-      });
+      let structured: ATSStructuredResume | null = null;
+      try {
+        const res = await fetch('/api/generate-ats-resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            resumeText: effectiveText,
+            jobDescription,
+            targetRole: targetRole || 'Target Role',
+            confirmedSkills,
+            analysisId,
+          }),
+        });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to generate ATS resume.');
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            structured = data.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
       }
 
-      setStructuredResume(data.data);
+      if (!structured) {
+        structured = generateATSResumeClientSide({
+          resumeText: effectiveText,
+          jobDescription,
+          targetRole: targetRole || 'Software Engineer',
+          confirmedSkills,
+          originalScore: initialScore || 72,
+        });
+      }
+
+      setStructuredResume(structured);
     } catch (err: any) {
       setError(err.message || 'Failed to generate ATS resume.');
     } finally {
@@ -285,22 +324,38 @@ export const ATSResumeOptimizer: React.FC<ATSResumeOptimizerProps> = ({
     setBulletResult(null);
 
     try {
-      const res = await fetch('/api/rewrite-bullet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let result: BulletRewriteResult | null = null;
+      try {
+        const res = await fetch('/api/rewrite-bullet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bullet: singleBullet.trim(),
+            targetRole: targetRole || 'Software Engineer',
+            targetSkill: selectedSkillGaps[0] || 'Technical Impact',
+          }),
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data.success && data.data) {
+            result = data.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
+      }
+
+      if (!result) {
+        result = rewriteBulletClientSide({
           bullet: singleBullet.trim(),
           targetRole: targetRole || 'Software Engineer',
           targetSkill: selectedSkillGaps[0] || 'Technical Impact',
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to rewrite bullet.');
+        });
       }
 
-      setBulletResult(data.data);
+      setBulletResult(result);
     } catch (err: any) {
       setBulletError(err.message || 'Failed to rewrite bullet.');
     } finally {

@@ -16,6 +16,7 @@ import {
   Compass,
 } from 'lucide-react';
 import { JDAnalysisResult } from '../types/analysis';
+import { analyzeJDClientSide } from '../utils/clientAnalysisEngine';
 
 interface JDAnalyzerModalProps {
   isOpen: boolean;
@@ -66,18 +67,31 @@ export const JDAnalyzerModal: React.FC<JDAnalyzerModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/analyze-jd', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobDescription }),
-      });
+      let data: JDAnalysisResult | null = null;
+      try {
+        const res = await fetch('/api/analyze-jd', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobDescription }),
+        });
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to analyze job description.');
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            data = json.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
       }
 
-      setResult(json.data);
+      // If server didn't respond with JSON, use client synthesis
+      if (!data) {
+        data = analyzeJDClientSide(jobDescription);
+      }
+
+      setResult(data);
     } catch (err: any) {
       setError(err.message || 'Error deconstructing job description.');
     } finally {

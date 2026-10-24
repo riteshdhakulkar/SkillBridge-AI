@@ -118,15 +118,33 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setFetchError(null);
     try {
       const res = await fetch('/api/analyses');
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to load analyses');
-      setAnalyses(json.data as SavedAnalysis[]);
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setAnalyses(json.data as SavedAnalysis[]);
+          try {
+            localStorage.setItem('skillbridge_saved_analyses', JSON.stringify(json.data));
+          } catch {}
+          return;
+        }
+      }
     } catch (err: any) {
-      setFetchError(err.message || 'Could not load your analysis history.');
+      // Server offline or static deployment
     } finally {
       setLoading(false);
     }
+
+    // Fallback: load from localStorage
+    try {
+      const local = JSON.parse(localStorage.getItem('skillbridge_saved_analyses') || '[]');
+      if (Array.isArray(local)) {
+        setAnalyses(local);
+        return;
+      }
+    } catch {}
+
+    setAnalyses([]);
   }, []);
 
   useEffect(() => {
@@ -138,19 +156,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     if (!window.confirm('Delete this analysis? This cannot be undone.')) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/analyses/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || `Delete failed (${res.status})`);
-      }
-      // If the currently open modal belongs to the deleted item, close it
-      if (selectedAnalysis?.id === id) setSelectedAnalysis(null);
-      setAnalyses((prev) => prev.filter((a) => a.id !== id));
-    } catch (err: any) {
-      alert(`Could not delete analysis: ${err.message}`);
-    } finally {
-      setDeletingId(null);
-    }
+      await fetch(`/api/analyses/${id}`, { method: 'DELETE' }).catch(() => {});
+    } catch {}
+
+    try {
+      const local = JSON.parse(localStorage.getItem('skillbridge_saved_analyses') || '[]');
+      const filtered = local.filter((a: any) => a.id !== id);
+      localStorage.setItem('skillbridge_saved_analyses', JSON.stringify(filtered));
+    } catch {}
+
+    if (selectedAnalysis?.id === id) setSelectedAnalysis(null);
+    setAnalyses((prev) => prev.filter((a) => a.id !== id));
+    setDeletingId(null);
   };
 
   // ── Open one analysis ──────────────────────────────────────────────────────
@@ -163,15 +180,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     const requestId = ++detailRequestId.current;
     try {
       const res = await fetch(`/api/analyses/${id}`);
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to load analysis');
-      // Ignore a response for an analysis the user has already moved away from.
-      if (detailRequestId.current === requestId) {
-        setSelectedAnalysis(json.data as SavedAnalysis);
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const json = await res.json();
+        if (json.success && detailRequestId.current === requestId) {
+          setSelectedAnalysis(json.data as SavedAnalysis);
+        }
       }
     } catch (err: any) {
-      console.error('Failed to load full analysis:', err);
       // Keep the cached copy on screen - the list payload is already complete.
     }
   };

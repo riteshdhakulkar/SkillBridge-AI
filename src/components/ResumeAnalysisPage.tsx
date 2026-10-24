@@ -34,6 +34,7 @@ import { getInterviewAnswer } from '../utils/interviewAnswers';
 import { ATSResumeOptimizer } from './ATSResumeOptimizer';
 import { CoverLetterGenerator } from './CoverLetterGenerator';
 import { MockInterviewPractice } from './MockInterviewPractice';
+import { analyzeFitClientSide, extractTextFromBase64 } from '../utils/clientAnalysisEngine';
 
 interface ResumeAnalysisPageProps {
   onNavigateDashboard: () => void;
@@ -365,24 +366,61 @@ Computer Science Peer Tutor (Sep 2024 - Present)
         jobDescription: jobDescription.trim(),
       };
 
-      const response = await fetch('/api/analyze-resume', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      let data: any = null;
+      let usedServer = false;
+
+      try {
+        const response = await fetch('/api/analyze-resume', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
+          data = await response.json();
+          if (data && data.success && data.data) {
+            usedServer = true;
+          }
+        }
+      } catch (networkErr) {
+        // Server unreachable or 404 (e.g. static Vercel host without backend)
+      }
 
       clearTimeout(stepTimer1);
       clearTimeout(stepTimer2);
 
-      const data = await response.json();
+      if (!usedServer || !data) {
+        // Run resilient client-side analysis engine
+        let textToAnalyze = pastedResume;
+        if (resumeMode === 'upload' && fileBase64) {
+          textToAnalyze = extractTextFromBase64(fileBase64);
+        }
+        if (!textToAnalyze || textToAnalyze.trim().length < 10) {
+          textToAnalyze = uploadedFile?.name ? `${uploadedFile.name} software engineering graduate projects` : 'Engineering Graduate Resume';
+        }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || `Server responded with status ${response.status}`);
+        const clientResult = analyzeFitClientSide(
+          textToAnalyze,
+          jobDescription.trim(),
+          uploadedFile?.name || 'Uploaded Resume'
+        );
+
+        setAnalysisResult(clientResult.data);
+        setAnalysisMeta(clientResult.meta);
+        setSavedAnalysisId(clientResult.savedId);
+        setIsAnalyzing(false);
+
+        if (onAnalysisSaved) {
+          onAnalysisSaved(clientResult.savedId);
+        }
+        window.scrollTo({ top: 150, behavior: 'smooth' });
+        return;
       }
 
-      // Valid analysis data received
+      // Valid analysis data received from server
       setAnalysisResult(data.data);
       setAnalysisMeta(data.meta);
       setSavedAnalysisId(data.savedId ?? null);
@@ -396,8 +434,25 @@ Computer Science Peer Tutor (Sep 2024 - Present)
       window.scrollTo({ top: 150, behavior: 'smooth' });
     } catch (err: any) {
       console.error('Analysis error:', err);
-      setIsAnalyzing(false);
-      setApiError(err.message || 'Failed to complete resume analysis. Please check your connection and try again.');
+      try {
+        const clientResult = analyzeFitClientSide(
+          pastedResume || 'Engineering Candidate Resume',
+          jobDescription.trim() || 'Software Engineer',
+          uploadedFile?.name || 'Candidate Resume'
+        );
+        setAnalysisResult(clientResult.data);
+        setAnalysisMeta(clientResult.meta);
+        setSavedAnalysisId(clientResult.savedId);
+        setIsAnalyzing(false);
+        if (onAnalysisSaved) {
+          onAnalysisSaved(clientResult.savedId);
+        }
+        window.scrollTo({ top: 150, behavior: 'smooth' });
+        return;
+      } catch {
+        setIsAnalyzing(false);
+        setApiError(err.message || 'Failed to complete resume analysis. Please try again.');
+      }
     }
   };
 

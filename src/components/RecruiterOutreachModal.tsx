@@ -15,6 +15,7 @@ import {
   FileCheck,
 } from 'lucide-react';
 import { OutreachMessagesResult } from '../types/analysis';
+import { generateOutreachClientSide } from '../utils/clientAnalysisEngine';
 
 interface RecruiterOutreachModalProps {
   isOpen: boolean;
@@ -55,23 +56,40 @@ export const RecruiterOutreachModal: React.FC<RecruiterOutreachModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/generate-outreach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: OutreachMessagesResult | null = null;
+      try {
+        const res = await fetch('/api/generate-outreach', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidateName,
+            companyName,
+            jobTitle,
+            projectMention,
+          }),
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            data = json.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
+      }
+
+      if (!data) {
+        data = generateOutreachClientSide({
           candidateName,
           companyName,
           jobTitle,
           projectMention,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to generate outreach messages.');
+        });
       }
 
-      setOutreach(json.data);
+      setOutreach(data);
     } catch (err: any) {
       setError(err.message || 'Error generating messages.');
     } finally {

@@ -14,6 +14,7 @@ import {
   Send,
 } from 'lucide-react';
 import { CoverLetterResult } from '../types/analysis';
+import { generateCoverLetterClientSide } from '../utils/clientAnalysisEngine';
 
 interface CoverLetterGeneratorProps {
   jobTitle: string;
@@ -39,22 +40,41 @@ export const CoverLetterGenerator: React.FC<CoverLetterGeneratorProps> = ({
     setIsGenerating(true);
     setError(null);
     try {
-      const res = await fetch('/api/generate-cover-letter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: CoverLetterResult | null = null;
+      try {
+        const res = await fetch('/api/generate-cover-letter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobTitle: jobTitle || 'Target Position',
+            companyName: companyName || 'Target Company',
+            jobDescription,
+            resumeText,
+          }),
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            data = json.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
+      }
+
+      if (!data) {
+        data = generateCoverLetterClientSide({
           jobTitle: jobTitle || 'Target Position',
           companyName: companyName || 'Target Company',
           jobDescription,
           resumeText,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to generate cover letter.');
+        });
       }
-      setCoverData(data.data);
-      setEditableLetter(data.data.letter);
+
+      setCoverData(data);
+      setEditableLetter(data.letter);
     } catch (err: any) {
       setError(err.message || 'Failed to generate cover letter.');
     } finally {

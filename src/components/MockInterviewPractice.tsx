@@ -17,6 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import { InterviewEvaluationResult } from '../types/analysis';
+import { evaluateInterviewAnswerClientSide } from '../utils/clientAnalysisEngine';
 
 interface MockInterviewPracticeProps {
   question: string;
@@ -111,24 +112,42 @@ export const MockInterviewPractice: React.FC<MockInterviewPracticeProps> = ({
     setEvalError(null);
 
     try {
-      const res = await fetch('/api/evaluate-interview-answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: InterviewEvaluationResult | null = null;
+      try {
+        const res = await fetch('/api/evaluate-interview-answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            topic,
+            expectedFocus,
+            candidateAnswer: candidateAnswer.trim(),
+            targetRole: targetRole || 'Software Engineering',
+          }),
+        });
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            data = json.data;
+          }
+        }
+      } catch {
+        // Backend offline / Vercel static mode
+      }
+
+      if (!data) {
+        data = evaluateInterviewAnswerClientSide({
           question,
           topic,
           expectedFocus,
           candidateAnswer: candidateAnswer.trim(),
           targetRole: targetRole || 'Software Engineering',
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to evaluate answer.');
+        });
       }
 
-      setEvaluation(data.data);
+      setEvaluation(data);
     } catch (err: any) {
       setEvalError(err.message || 'Failed to evaluate answer. Please try again.');
     } finally {
